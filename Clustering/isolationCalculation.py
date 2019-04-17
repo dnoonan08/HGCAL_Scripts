@@ -16,9 +16,14 @@ parser.add_argument('--NFiles', "--nFiles", default=-1, type=int)
 parser.add_argument('--name', default="")
 parser.add_argument('--verbose','-v',action='store_true',help='Print verbose output of matching')
 parser.add_argument('--genjet',action='store_true',help='Use genJet instead of gen partons')
+parser.add_argument('--tcCut', default=-1., type=float,help='mipPT cut to apply to trigger cells')
+parser.add_argument('--draw',action='store_true',help='Draw jet clusters')
 args = parser.parse_args()
 
 print args
+
+if args.draw:
+    import drawJets
 
 if not (args.vbf or args.particlegun):
     print "Specify vbf or particle gun"
@@ -34,13 +39,13 @@ from subprocess import Popen,PIPE
 from pyjet import cluster,DTYPE_EP,DTYPE_PTEPM
 
 #import histvbf as h
-from histvbf import *
+from histIso import *
 
 print "Starting"
 
 
 
-nGenVBFinHGCAL = 0
+nGenParticlesinHGCAL = 0
 
 nmatchedJets = 0
 nunmatchedJets = 0
@@ -93,6 +98,8 @@ for fName in fileList[:nFiles]:
 
     print "File %s"%fName
     fulldf = _tree.pandas.df(["tc_pt","tc_energy","tc_eta","tc_mipPt","tc_phi"],entrystart=0,entrystop=N)
+    if args.tcCut>-1:
+        fulldf = fulldf[fulldf.tc_mipPt > args.tcCut]
     if not args.genjet:
         fulldfGen = _tree.pandas.df(["gen_pt","gen_eta","gen_phi","gen_status","gen_pdgid","gen_energy"],entrystart=0,entrystop=N)
     else:
@@ -109,8 +116,9 @@ for fName in fileList[:nFiles]:
         tc = fulldf.loc[i_event,['tc_pt','tc_eta','tc_phi','tc_energy']]
         tc.columns=["pT","eta","phi","energy"]
 
-    #go dataframe to np array, formatted for input into fastjet    
+        #go dataframe to np array, formatted for input into fastjet    
         tcVectors = np.array(tc.to_records(index=False).astype([(u'pT', '<f8'), (u'eta', '<f8'), (u'phi', '<f8'), (u'energy', '<f8')]) ) 
+
         print "    Loaded in", time.clock()-start
         clusterVals = cluster(tcVectors,R=0.4,algo="antikt")
         _jets = clusterVals.inclusive_jets(ptmin=20)
@@ -127,12 +135,15 @@ for fName in fileList[:nFiles]:
             genjetDF = fulldfGen.loc[i_event,['genjet_pt','genjet_eta','genjet_phi','genjet_energy']]
             genjetDF.columns = ['gen_pt','gen_eta','gen_phi','gen_energy']
             
+        if args.draw:
+            drawJets.drawJets(jets = _jets,name = "Plots/JetAreas_FourVectorEnergy_%i.pdf"%i_event,genjet_eta = genjetDF.gen_eta.values, genjet_phi = genjetDF.gen_phi.values,label = "test")
+
 
         fill_hist(h.genJetPt   ,genjetDF.gen_pt.values)
 
         genjetVector = genjetDF.values
         
-        nGenVBFinHGCAL += len(genjetVector)
+        nGenParticlesinHGCAL += len(genjetVector)
 
         print "    Got Gen in", time.clock()-start
 
@@ -160,6 +171,7 @@ for fName in fileList[:nFiles]:
 
 
         print "    GenMatch in", time.clock()-start
+        print "       Matched %i jets"%len(matchedJets)
         unmatchedJets = [x for x in range(len(_jets)) if x not in matchedJets]
         unmatchedGen = [x for x in range(len(genjetVector)) if x not in genMatch]
 
@@ -313,7 +325,7 @@ for fName in fileList[:nFiles]:
 	nmatchedJets=nmatchedJets + len(matchedJets)
 	nunmatchedJets=nunmatchedJets + len(unmatchedJets)
 
-print  '===nGenVBFinHGCAL', nGenVBFinHGCAL
+print  '===nGenParticlesinHGCAL', nGenParticlesinHGCAL
 print  '===matchedjets', nmatchedJets
 print  '===unmatchedjets', nunmatchedJets
 
@@ -342,4 +354,4 @@ if not skipFill:
     h.dReta30pu.Scale(1.0/nunmatchedJets)
     h.isoowenploteta30pu.Scale(1.0/nunmatchedJets)
     
-    h.hcalhistoVBF.Write()
+    h.hcalhisto.Write()
