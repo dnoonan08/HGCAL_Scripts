@@ -15,17 +15,19 @@ useMaxPtLocation = True
 
 print "Starting"
 
-fName = "root://cmseos.fnal.gov//store/user/dnoonan/HGCAL_Concentrator/L1THGCal_Ntuples/Particle_Gun/ntuple_etaphiTower_pid5_pt50_0PU_0.root"
+fName = "root://cmseos.fnal.gov//store/user/dnoonan/HGCAL_Concentrator/L1THGCal_Ntuples/Electron_Particle_Gun/ntuple_etaphiTower_pid11_pt50_eta15-30_0PU_0.root"
 
 #use uproot (available from CMSSW after 10X) to load ntuples from root files into numpy arrays
 _tree = uproot.open(fName,xrootdsource=dict(chunkbytes=1024**3, limitbytes=1024**3))["hgcalTriggerNtuplizer/HGCalTriggerNtuple"]
 
 N = _tree.numentries
 
-#N = 25
+N = 5
 
 print "File %s"%fName
 fulldf = _tree.pandas.df(["tc_subdet","tc_zside","tc_layer","tc_wafer","tc_cell","tc_pt","tc_energy","tc_simenergy","tc_eta","tc_mipPt","tc_phi"],entrystart=0, entrystop=N)
+
+fulldfGen = _tree.pandas.df(["gen_pt","gen_eta","gen_phi","gen_pdgid","gen_status"],entrystart=0, entrystop=N)
 
 fulldf["tc_superTC"] = np.where(fulldf.tc_subdet==5,fulldf.tc_cell,fulldf['tc_cell'].map(superTCMap))
 #initDF = fulldf
