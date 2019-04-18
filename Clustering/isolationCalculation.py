@@ -11,12 +11,18 @@ parser.add_argument('--particlegun','--pgun',help='Run on Particle Gun samples',
 parser.add_argument('--pid', default=1, type=int)
 parser.add_argument('--pu', default=140, type=int)
 parser.add_argument('--pt', default=50, type=int)
+
 parser.add_argument('-N', "-n", default=-1, type=int)
-parser.add_argument('--NFiles', "--nFiles", default=-1, type=int)
+#parser.add_argument('--NFiles', "--nFiles", default=-1, type=int)
 parser.add_argument('--name', default="")
+
 parser.add_argument('--verbose','-v',action='store_true',help='Print verbose output of matching')
+parser.add_argument('--time',action='store_true',help='Print time information per event')
+
 parser.add_argument('--genjet',action='store_true',help='Use genJet instead of gen partons')
 parser.add_argument('--tcCut', default=-1., type=float,help='mipPT cut to apply to trigger cells')
+parser.add_argument('--simEnergyCut', default=-1., type=float,help='simEnergy cut to apply to trigger cells')
+
 parser.add_argument('--draw',action='store_true',help='Draw jet clusters')
 args = parser.parse_args()
 
@@ -43,15 +49,15 @@ from histIso import *
 
 print "Starting"
 
-
-
+#count number of gen particles, matched, and unmatched jets
 nGenParticlesinHGCAL = 0
-
 nmatchedJets = 0
 nunmatchedJets = 0
 
-import time
-start = time.clock()
+#timers
+if args.time:
+    import time
+    start = time.clock()
 
 skipFill = False
 
@@ -82,48 +88,67 @@ dirContentsList = dirContents.split("\n")
 for fName in dirContentsList:
     if fileNameContent in fName:
         fileList.append("root://cmseos.fnal.gov/%s"%(fName))
-        
-if args.NFiles==-1:
-    nFiles = len(fileList)
-else:
-    nFiles = args.NFiles
 
-for fName in fileList[:nFiles]:
+
+totalN = 0       
+# if args.NFiles==-1:
+#     nFiles = len(fileList)
+# else:
+#     nFiles = args.NFiles
+
+for fName in fileList:
 
     _tree = uproot.open(fName,xrootdsource=dict(chunkbytes=1024**3, limitbytes=1024**3))["hgcalTriggerNtuplizer/HGCalTriggerNtuple"]
+
     if args.N==-1:
         N = _tree.numentries
     else:
-        N = args.N
+        if totalN > args.N:
+            break
+        nRemaining = args.N - totalN
+        if _tree.numentries < nRemaining:
+            N = _tree.numentries
+        else:
+            N = nRemaining
+        totalN += _tree.numentries
 
     print "File %s"%fName
-    fulldf = _tree.pandas.df(["tc_pt","tc_energy","tc_eta","tc_mipPt","tc_phi"],entrystart=0,entrystop=N)
+    fulldf = _tree.pandas.df(["tc_pt","tc_energy","tc_eta","tc_mipPt","tc_simenergy","tc_phi"],entrystart=0,entrystop=N)
     if args.tcCut>-1:
         fulldf = fulldf[fulldf.tc_mipPt > args.tcCut]
+    if args.simEnergyCut>-1:
+        fulldf = fulldf[fulldf.tc_simenergy > args.simEnergyCut]
     if not args.genjet:
         fulldfGen = _tree.pandas.df(["gen_pt","gen_eta","gen_phi","gen_status","gen_pdgid","gen_energy"],entrystart=0,entrystop=N)
     else:
         fulldfGen = _tree.pandas.df(["genjet_pt","genjet_eta","genjet_phi","genjet_energy"],entrystart=0,entrystop=N)
 
-    print "Loaded tree ", time.clock()-start
-    print N
+    if args.time:
+        print "Loaded tree ", time.clock()-start
+
 
     for i_event in range(N):
-        start = time.clock()
-        print '-'*20
-    	print "     %i"%i_event   
+        if args.time: 
+            start = time.clock()
+            print '-'*20
+            print "     %i"%i_event   
+
         # load into dictionary for creating pandas df
         tc = fulldf.loc[i_event,['tc_pt','tc_eta','tc_phi','tc_energy']]
         tc.columns=["pT","eta","phi","energy"]
+        tc = tc.assign(mass=0)
 
         #go dataframe to np array, formatted for input into fastjet    
-        tcVectors = np.array(tc.to_records(index=False).astype([(u'pT', '<f8'), (u'eta', '<f8'), (u'phi', '<f8'), (u'energy', '<f8')]) ) 
+        # tcVectors = np.array(tc.to_records(index=False).astype([(u'pT', '<f8'), (u'eta', '<f8'), (u'phi', '<f8'), (u'energy', '<f8')]) ) 
+        tcVectors = np.array(tc[["pT","eta","phi","mass"]].to_records(index=False).astype([(u'pT', '<f8'), (u'eta', '<f8'), (u'phi', '<f8'), (u'mass', '<f8')]) ) 
 
-        print "    Loaded in", time.clock()-start
+        if args.time:
+            print "    Loaded in", time.clock()-start
         clusterVals = cluster(tcVectors,R=0.4,algo="antikt")
         _jets = clusterVals.inclusive_jets(ptmin=20)
-        print "    Clustered jets in", time.clock()-start
-        print "      --- len =",len(tcVectors), (time.clock()-start)/len(tcVectors)
+        if args.time:
+            print "    Clustered jets in", time.clock()-start
+            print "      --- len =",len(tcVectors), (time.clock()-start)/len(tcVectors)
 
         if not args.genjet:
             genjetDF = fulldfGen.loc[i_event,['gen_pt','gen_eta','gen_phi','gen_status','gen_pdgid','gen_energy']]
@@ -136,7 +161,12 @@ for fName in fileList[:nFiles]:
             genjetDF.columns = ['gen_pt','gen_eta','gen_phi','gen_energy']
             
         if args.draw:
-            drawJets.drawJets(jets = _jets,name = "Plots/JetAreas_FourVectorEnergy_%i.pdf"%i_event,genjet_eta = genjetDF.gen_eta.values, genjet_phi = genjetDF.gen_phi.values,label = "test")
+            if args.vbf:
+                figureName = "Plots/JetAreas_VBF_%i.pdf"%i_event
+            if args.particlegun:
+                figureName = "Plots/JetAreas_pid_%i_%i.pdf"%(args.pid,i_event)
+
+            drawJets.drawJets(jets = _jets,name = figureName ,genjet_eta = genjetDF.gen_eta.values, genjet_phi = genjetDF.gen_phi.values,label = "test")
 
 
         fill_hist(h.genJetPt   ,genjetDF.gen_pt.values)
@@ -144,8 +174,9 @@ for fName in fileList[:nFiles]:
         genjetVector = genjetDF.values
         
         nGenParticlesinHGCAL += len(genjetVector)
-
-        print "    Got Gen in", time.clock()-start
+        
+        if args.time:
+            print "    Got Gen in", time.clock()-start
 
         matchedJets = []
         genMatch = []
@@ -169,9 +200,10 @@ for fName in fileList[:nFiles]:
             if not foundMatch:
                 print "No Match Found"
 
+        if args.time:
+            print "    GenMatch in", time.clock()-start
+            print "       Matched %i jets"%len(matchedJets)
 
-        print "    GenMatch in", time.clock()-start
-        print "       Matched %i jets"%len(matchedJets)
         unmatchedJets = [x for x in range(len(_jets)) if x not in matchedJets]
         unmatchedGen = [x for x in range(len(genjetVector)) if x not in genMatch]
 
@@ -183,12 +215,7 @@ for fName in fileList[:nFiles]:
             tc['dR'] = (tc.dEta**2 + tc.dPhi**2)**0.5
             
             cut = tc.dR<0.45
-            tcThisJet = tc[cut] #.loc[dR2<0.45,:]
-            # dEtaThisJet = dEta[dR<0.45].values
-            # dPhiThisJet = dPhi[dR<0.45].values
-            # dRThisJet = dR[dR<0.45].values
-            # ptThisJet = tcThisJet.pT.values
-	    # energyThisJet = tcThisJet.energy.values
+            tcThisJet = tc[cut]
             
             A = tcThisJet.loc[tcThisJet.dR<0.1,'pT'].sum()
             B = tcThisJet.loc[(tcThisJet.dR>0.1) & (tcThisJet.dR<0.2),'pT'].sum()
@@ -236,36 +263,8 @@ for fName in fileList[:nFiles]:
                     fill_hist(h.dReta30              ,tcThisJet[['dR','pT']].values)
 
 
-            # for i_tc in range(len(dEtaThisJet)):
-            #     h.detadphiall.Fill(dEtaThisJet[i_tc],dPhiThisJet[i_tc],ptThisJet[i_tc])
-            #     h.dRptall.Fill(dRThisJet[i_tc],ptThisJet[i_tc], ptThisJet[i_tc])
-            #     h.dRgall.Fill(dRThisJet[i_tc],energyThisJet[i_tc],energyThisJet[i_tc])
-	    #     h.tcpt.Fill(ptThisJet[i_tc],ptThisJet[i_tc])
-	    #     h.tcenergy.Fill(energyThisJet[i_tc],energyThisJet[i_tc])
-	    #     h.DRp.Fill(dRThisJet[i_tc],ptThisJet[i_tc])
-	    #     h.DRe.Fill(dRThisJet[i_tc],energyThisJet[i_tc])
-	    # if abs(genjetVector[0,1])>1.5 and abs(genjetVector[0,1])<1.9:
-            #         h.isoowenploteta15.Fill(isoowen)
-            #         for i in range(len(dEtaThisJet)):
-            #            h.detadphieta15.Fill(dEtaThisJet[i_tc],dPhiThisJet[i_tc],ptThisJet[i_tc])
-            #            h.dReta15.Fill(dRThisJet[i_tc],ptThisJet[i_tc])
-            # elif abs(genjetVector[0,1])>1.9 and abs(genjetVector[0,1])<2.3:
-            #         h.isoowenploteta20.Fill(isoowen)
-            #         for i in range(len(dEtaThisJet)):
-            #            h.detadphieta20.Fill(dEtaThisJet[i_tc],dPhiThisJet[i_tc],ptThisJet[i_tc])
-            #            h.dReta20.Fill(dRThisJet[i_tc],ptThisJet[i_tc])
-            # elif abs(genjetVector[0,1])>2.3 and abs(genjetVector[0,1])<2.7:
-            #         h.isoowenploteta25.Fill(isoowen)
-            #         for i in range(len(dEtaThisJet)):
-            #            h.detadphieta25.Fill(dEtaThisJet[i_tc],dPhiThisJet[i_tc],ptThisJet[i_tc])
-            #            h.dReta25.Fill(dRThisJet[i_tc],ptThisJet[i_tc])
-            # elif abs(genjetVector[0,1])>2.7:
-            #         h.isoowenploteta30.Fill(isoowen)
-            #         for i in range(len(dEtaThisJet)):
-            #            h.detadphieta30.Fill(dEtaThisJet[i_tc],dPhiThisJet[i_tc],ptThisJet[i_tc])
-            #            h.dReta30.Fill(dRThisJet[i_tc],ptThisJet[i_tc])
-
-        print "    process Matched in", time.clock()-start
+        if args.time:
+            print "    process Matched in", time.clock()-start
                        
         for j in unmatchedJets:
             tc['dEta'] = tc['eta']-_jets[j].eta
@@ -273,12 +272,7 @@ for fName in fileList[:nFiles]:
             tc['dR'] = (tc.dEta**2 + tc.dPhi**2)**0.5
 
             cut = tc.dR<0.45
-            tcThisJet = tc[cut] #.loc[dR2<0.45,:]
-#            dEtaThisJet2 = dEta2[cut].values
-#            dPhiThisJet2 = dPhi2[cut].values
-#            dRThisJet2 = dR2[cut].values
-#            ptThisJet2 = tcThisJet2.pT.values
-#	    energyThisJet2 = tcThisJet2.energy.values
+            tcThisJet = tc[cut]
 
             A = tcThisJet.loc[tcThisJet.dR<0.1,'pT'].sum()
             B = tcThisJet.loc[(tcThisJet.dR>0.1) & (tcThisJet.dR<0.2),'pT'].sum()
@@ -319,8 +313,8 @@ for fName in fileList[:nFiles]:
                     fill_hist(h.detadphieta30pu      ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
                     fill_hist(h.dReta30pu            ,tcThisJet[['dR','pT']].values)
 
-
-        print "    process UnMatched in", time.clock()-start
+        if args.time:
+            print "    process UnMatched in", time.clock()-start
 
 	nmatchedJets=nmatchedJets + len(matchedJets)
 	nunmatchedJets=nunmatchedJets + len(unmatchedJets)
