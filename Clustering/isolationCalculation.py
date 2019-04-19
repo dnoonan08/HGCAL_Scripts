@@ -1,4 +1,3 @@
-
 ###
 # code based on simpleNewVBFreal.py from Uttiya Sarkar
 ###
@@ -75,12 +74,19 @@ if args.vbf:
     fileNameContent = "ntuple_hgcalNtuples_vbf_hmm_%iPU"%(args.pu)
     outputFileName = "VBF_%iPU.root"%(args.pu)
 
-h = MakeHist(outputFileName)
+if args.tcCut>-1:
+    print "HERE"
+    outputFileName = outputFileName.replace(".root","_tcMipPt_gt_%i.root"%int(args.tcCut))
 
-fileList = []
+if args.simEnergyCut>-1:
+    outputFileName = outputFileName.replace(".root","_simEnergy_gt_%i.root"%int(args.simEnergy))
 
 if not args.name=="":
     outputFileName = outputFileName.replace(".root","_%s.root"%args.name)
+
+h = MakeHist(outputFileName)
+
+fileList = []
 
 cmd = "xrdfs root://cmseos.fnal.gov ls %s"%eosDir
 dirContents,stderr = Popen(cmd,shell=True,stdout=PIPE,stderr=PIPE).communicate()
@@ -97,6 +103,9 @@ totalN = 0
 #     nFiles = args.NFiles
 
 for fName in fileList:
+
+    if not args.N==-1 and (totalN > args.N):
+        break
 
     _tree = uproot.open(fName,xrootdsource=dict(chunkbytes=1024**3, limitbytes=1024**3))["hgcalTriggerNtuplizer/HGCalTriggerNtuple"]
 
@@ -123,9 +132,9 @@ for fName in fileList:
     else:
         fulldfGen = _tree.pandas.df(["genjet_pt","genjet_eta","genjet_phi","genjet_energy"],entrystart=0,entrystop=N)
 
+
     if args.time:
         print "Loaded tree ", time.clock()-start
-
 
     for i_event in range(N):
         if args.time: 
@@ -149,6 +158,7 @@ for fName in fileList:
         if args.time:
             print "    Clustered jets in", time.clock()-start
             print "      --- len =",len(tcVectors), (time.clock()-start)/len(tcVectors)
+        del tcVectors
 
         if not args.genjet:
             genjetDF = fulldfGen.loc[i_event,['gen_pt','gen_eta','gen_phi','gen_status','gen_pdgid','gen_energy']]
@@ -183,8 +193,8 @@ for fName in fileList:
 
 
         for i in range(len(genjetVector)):
+            foundMatch = False
             if args.verbose:
-                foundMatch = False
                 print genjetVector[i][:4]
             for j in range(len(_jets)):
                  dRSq_jet_genjet=((_jets[j].eta-genjetVector[i,1])**2+(_jets[j].phi-genjetVector[i,2])**2)
@@ -197,8 +207,9 @@ for fName in fileList:
                     genMatch.append(i)
                     foundMatch = True
                     break   
-            if not foundMatch:
-                print "No Match Found"
+            if args.verbose:
+                if not foundMatch:
+                    print "No Match Found"
 
         if args.time:
             print "    GenMatch in", time.clock()-start
@@ -318,10 +329,16 @@ for fName in fileList:
 
 	nmatchedJets=nmatchedJets + len(matchedJets)
 	nunmatchedJets=nunmatchedJets + len(unmatchedJets)
+    del fulldf
+    del fulldfGen
+
 
 print  '===nGenParticlesinHGCAL', nGenParticlesinHGCAL
 print  '===matchedjets', nmatchedJets
 print  '===unmatchedjets', nunmatchedJets
+
+nmatchedJets = max(nmatchedJets,1)
+nunmatchedJets = max(nunmatchedJets,1)
 
 if not skipFill:
     h.dRgall.Scale(1.0/nmatchedJets)
