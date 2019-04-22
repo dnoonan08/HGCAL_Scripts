@@ -14,6 +14,7 @@ parser.add_argument('--pt', default=50, type=int)
 parser.add_argument('-N', "-n", default=-1, type=int)
 #parser.add_argument('--NFiles', "--nFiles", default=-1, type=int)
 parser.add_argument('--name', default="")
+parser.add_argument('--job', default="1/1", help="parallelization jobs, job number over total number of jobs for splitting up files")
 
 parser.add_argument('--verbose','-v',action='store_true',help='Print verbose output of matching')
 parser.add_argument('--time',action='store_true',help='Print time information per event')
@@ -36,8 +37,10 @@ if not (args.vbf or args.particlegun):
 
 import uproot
 import numpy as np
-import pandas as pd
+#import pandas as pd
 from root_numpy import fill_hist
+
+import gc
 
 from subprocess import Popen,PIPE
 
@@ -84,7 +87,6 @@ if args.simEnergyCut>-1:
 if not args.name=="":
     outputFileName = outputFileName.replace(".root","_%s.root"%args.name)
 
-h = MakeHist(outputFileName)
 
 fileList = []
 
@@ -95,6 +97,17 @@ for fName in dirContentsList:
     if fileNameContent in fName:
         fileList.append("root://cmseos.fnal.gov/%s"%(fName))
 
+print args.job
+if "/" in args.job:
+    jobN = int(args.job.split('/')[0])
+    nJobs = int(args.job.split('/')[1])
+    totalFiles = len(fileList)
+    filesPerJob = int(round(totalFiles/nJobs+.4999))
+
+    fileList = fileList[(jobN-1)*filesPerJob:jobN*filesPerJob]
+    outputFileName = outputFileName.replace(".root","_%iof%i.root"%(jobN, nJobs))
+
+h = MakeHist(outputFileName)
 
 totalN = 0       
 # if args.NFiles==-1:
@@ -123,16 +136,21 @@ for fName in fileList:
 
     print "File %s"%fName
     fulldf = _tree.pandas.df(["tc_pt","tc_energy","tc_eta","tc_mipPt","tc_simenergy","tc_phi"],entrystart=0,entrystop=N)
-    if args.tcCut>-1:
-        fulldf = fulldf[fulldf.tc_mipPt > args.tcCut]
-    if args.simEnergyCut>-1:
-        fulldf = fulldf[fulldf.tc_simenergy > args.simEnergyCut]
+    fulldf = fulldf[(fulldf.tc_mipPt > args.tcCut) & (fulldf.tc_simenergy > args.simEnergyCut)]
+    gc.collect()
+    # if args.tcCut>-1:
+    #     fulldf = fulldf[fulldf.tc_mipPt > args.tcCut]
+    # if args.simEnergyCut>-1:
+    #     fulldf = fulldf[fulldf.tc_simenergy > args.simEnergyCut]
     if not args.genjet:
         fulldfGen = _tree.pandas.df(["gen_pt","gen_eta","gen_phi","gen_status","gen_pdgid","gen_energy"],entrystart=0,entrystop=N)
     else:
         fulldfGen = _tree.pandas.df(["genjet_pt","genjet_eta","genjet_phi","genjet_energy"],entrystart=0,entrystop=N)
 
+    del _tree
+    gc.collect()
 
+    print "Loaded Tree"
     if args.time:
         print "Loaded tree ", time.clock()-start
 
@@ -159,6 +177,8 @@ for fName in fileList:
             print "    Clustered jets in", time.clock()-start
             print "      --- len =",len(tcVectors), (time.clock()-start)/len(tcVectors)
         del tcVectors
+        del clusterVals
+        gc.collect()
 
         if not args.genjet:
             genjetDF = fulldfGen.loc[i_event,['gen_pt','gen_eta','gen_phi','gen_status','gen_pdgid','gen_energy']]
@@ -254,25 +274,27 @@ for fName in fileList:
             fill_hist(h.DRp           ,tcThisJet.dR.values,tcThisJet.energy.values)
             
             if abs(_jets[j].eta)>1.5 and abs(_jets[j].eta)<1.9:
-                    h.isoowenploteta15.Fill(isoowen)
-                    fill_hist(h.detadphieta15        ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
-                    fill_hist(h.dReta15              ,tcThisJet[['dR','pT']].values)
+                h.isoowenploteta15.Fill(isoowen)
+                fill_hist(h.detadphieta15        ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
+                fill_hist(h.dReta15              ,tcThisJet[['dR','pT']].values)
 
             elif abs(_jets[j].eta)>1.9 and abs(_jets[j].eta)<2.3:
-                    h.isoowenploteta20.Fill(isoowen)
-                    fill_hist(h.detadphieta20        ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
-                    fill_hist(h.dReta20              ,tcThisJet[['dR','pT']].values)
+                h.isoowenploteta20.Fill(isoowen)
+                fill_hist(h.detadphieta20        ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
+                fill_hist(h.dReta20              ,tcThisJet[['dR','pT']].values)
 
             elif abs(_jets[j].eta)>2.3 and abs(_jets[j].eta)<2.7:
-                    h.isoowenploteta25.Fill(isoowen)
-                    fill_hist(h.detadphieta25        ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
-                    fill_hist(h.dReta25              ,tcThisJet[['dR','pT']].values)
+                h.isoowenploteta25.Fill(isoowen)
+                fill_hist(h.detadphieta25        ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
+                fill_hist(h.dReta25              ,tcThisJet[['dR','pT']].values)
 
             elif abs(_jets[j].eta)>2.7:
-                    h.isoowenploteta30.Fill(isoowen)
-                    fill_hist(h.detadphieta30        ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
-                    fill_hist(h.dReta30              ,tcThisJet[['dR','pT']].values)
+                h.isoowenploteta30.Fill(isoowen)
+                fill_hist(h.detadphieta30        ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
+                fill_hist(h.dReta30              ,tcThisJet[['dR','pT']].values)
 
+        del genjetVector
+        gc.collect()
 
         if args.time:
             print "    process Matched in", time.clock()-start
@@ -305,33 +327,36 @@ for fName in fileList:
             fill_hist(h.DRppu         ,tcThisJet.dR.values,tcThisJet.energy.values)
             
             if abs(_jets[j].eta)>1.5 and abs(_jets[j].eta)<1.9:
-                    h.isoowenploteta15pu.Fill(isoowenpu)
-                    fill_hist(h.detadphieta15pu      ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
-                    fill_hist(h.dReta15pu            ,tcThisJet[['dR','pT']].values)
-
+                h.isoowenploteta15pu.Fill(isoowenpu)
+                fill_hist(h.detadphieta15pu      ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
+                fill_hist(h.dReta15pu            ,tcThisJet[['dR','pT']].values)
+                
             elif abs(_jets[j].eta)>1.9 and abs(_jets[j].eta)<2.3:
-                    h.isoowenploteta20pu.Fill(isoowenpu)
-                    fill_hist(h.detadphieta20pu      ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
-                    fill_hist(h.dReta20pu            ,tcThisJet[['dR','pT']].values)
+                h.isoowenploteta20pu.Fill(isoowenpu)
+                fill_hist(h.detadphieta20pu      ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
+                fill_hist(h.dReta20pu            ,tcThisJet[['dR','pT']].values)
 
             elif abs(_jets[j].eta)>2.3 and abs(_jets[j].eta)<2.7:
-                    h.isoowenploteta25pu.Fill(isoowenpu)
-                    fill_hist(h.detadphieta25pu      ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
-                    fill_hist(h.dReta25pu            ,tcThisJet[['dR','pT']].values)
+                h.isoowenploteta25pu.Fill(isoowenpu)
+                fill_hist(h.detadphieta25pu      ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
+                fill_hist(h.dReta25pu            ,tcThisJet[['dR','pT']].values)
 
             elif abs(_jets[j].eta)>2.7:
-                    h.isoowenploteta30pu.Fill(isoowenpu)
-                    fill_hist(h.detadphieta30pu      ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
-                    fill_hist(h.dReta30pu            ,tcThisJet[['dR','pT']].values)
+                h.isoowenploteta30pu.Fill(isoowenpu)
+                fill_hist(h.detadphieta30pu      ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
+                fill_hist(h.dReta30pu            ,tcThisJet[['dR','pT']].values)
 
         if args.time:
             print "    process UnMatched in", time.clock()-start
+        del tc
+        gc.collect()
 
 	nmatchedJets=nmatchedJets + len(matchedJets)
 	nunmatchedJets=nunmatchedJets + len(unmatchedJets)
+    
     del fulldf
     del fulldfGen
-
+    gc.collect()
 
 print  '===nGenParticlesinHGCAL', nGenParticlesinHGCAL
 print  '===matchedjets', nmatchedJets
