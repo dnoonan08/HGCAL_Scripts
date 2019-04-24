@@ -45,7 +45,6 @@ import gc
 from subprocess import Popen,PIPE
 
 from pyjet import cluster,DTYPE_EP,DTYPE_PTEPM
-
 #import histvbf as h
 from histIso import *
 
@@ -154,6 +153,7 @@ for fName in fileList:
     if args.time:
         print "Loaded tree ", time.clock()-start
 
+
     for i_event in range(N):
         if args.time: 
             start = time.clock()
@@ -204,7 +204,6 @@ for fName in fileList:
         genjetVector = genjetDF.values
         
         nGenParticlesinHGCAL += len(genjetVector)
-        
         if args.time:
             print "    Got Gen in", time.clock()-start
 
@@ -263,7 +262,8 @@ for fName in fileList:
             h.jetPt.Fill(_jets[j].pt)
             h.jetPt_puSub.Fill(_jets[j].pt - C/.75)
 
-            h.isoowenplotall.Fill(isoowen)
+            h.iso_PUsub_all.Fill(isoowen)
+            h.iso_noPUsub_all.Fill(B/A)
 
             fill_hist(h.detadphiall   ,tcThisJet[['dEta','dPhi']].values,tcThisJet.pT.values)
             fill_hist(h.dRgall        ,tcThisJet[['dR','energy']].values)
@@ -274,22 +274,26 @@ for fName in fileList:
             fill_hist(h.DRp           ,tcThisJet.dR.values,tcThisJet.energy.values)
             
             if abs(_jets[j].eta)>1.5 and abs(_jets[j].eta)<1.9:
-                h.isoowenploteta15.Fill(isoowen)
+                h.iso_PUsub_eta15.Fill(isoowen)
+                h.iso_noPUsub_eta15.Fill(B/A)
                 fill_hist(h.detadphieta15        ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
                 fill_hist(h.dReta15              ,tcThisJet[['dR','pT']].values)
 
             elif abs(_jets[j].eta)>1.9 and abs(_jets[j].eta)<2.3:
-                h.isoowenploteta20.Fill(isoowen)
+                h.iso_PUsub_eta20.Fill(isoowen)
+                h.iso_noPUsub_eta20.Fill(B/A)
                 fill_hist(h.detadphieta20        ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
                 fill_hist(h.dReta20              ,tcThisJet[['dR','pT']].values)
 
             elif abs(_jets[j].eta)>2.3 and abs(_jets[j].eta)<2.7:
-                h.isoowenploteta25.Fill(isoowen)
+                h.iso_PUsub_eta25.Fill(isoowen)
+                h.iso_noPUsub_eta25.Fill(B/A)
                 fill_hist(h.detadphieta25        ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
                 fill_hist(h.dReta25              ,tcThisJet[['dR','pT']].values)
 
             elif abs(_jets[j].eta)>2.7:
-                h.isoowenploteta30.Fill(isoowen)
+                h.iso_PUsub_eta30.Fill(isoowen)
+                h.iso_noPUsub_eta30.Fill(B/A)
                 fill_hist(h.detadphieta30        ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
                 fill_hist(h.dReta30              ,tcThisJet[['dR','pT']].values)
 
@@ -316,7 +320,8 @@ for fName in fileList:
 
             if skipFill: continue
 
-            h.isoowenplotallpu.Fill(isoowenpu)
+            h.iso_PUsub_allpu.Fill(isoowenpu)
+            h.iso_noPUsub_allpu.Fill(B/A)
 
             fill_hist(h.detadphiallpu ,tcThisJet[['dEta','dPhi']].values,tcThisJet.pT.values)
             fill_hist(h.dRgallpu      ,tcThisJet[['dR','energy']].values)
@@ -327,22 +332,26 @@ for fName in fileList:
             fill_hist(h.DRppu         ,tcThisJet.dR.values,tcThisJet.energy.values)
             
             if abs(_jets[j].eta)>1.5 and abs(_jets[j].eta)<1.9:
-                h.isoowenploteta15pu.Fill(isoowenpu)
+                h.iso_PUsub_eta15pu.Fill(isoowenpu)
+                h.iso_noPUsub_eta15pu.Fill(B/A)
                 fill_hist(h.detadphieta15pu      ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
                 fill_hist(h.dReta15pu            ,tcThisJet[['dR','pT']].values)
                 
             elif abs(_jets[j].eta)>1.9 and abs(_jets[j].eta)<2.3:
-                h.isoowenploteta20pu.Fill(isoowenpu)
+                h.iso_PUsub_eta20pu.Fill(isoowenpu)
+                h.iso_noPUsub_eta20pu.Fill(B/A)
                 fill_hist(h.detadphieta20pu      ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
                 fill_hist(h.dReta20pu            ,tcThisJet[['dR','pT']].values)
 
             elif abs(_jets[j].eta)>2.3 and abs(_jets[j].eta)<2.7:
-                h.isoowenploteta25pu.Fill(isoowenpu)
+                h.iso_PUsub_eta25pu.Fill(isoowenpu)
+                h.iso_noPUsub_eta25pu.Fill(B/A)
                 fill_hist(h.detadphieta25pu      ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
                 fill_hist(h.dReta25pu            ,tcThisJet[['dR','pT']].values)
 
             elif abs(_jets[j].eta)>2.7:
-                h.isoowenploteta30pu.Fill(isoowenpu)
+                h.iso_PUsub_eta30pu.Fill(isoowenpu)
+                h.iso_noPUsub_eta30pu.Fill(B/A)
                 fill_hist(h.detadphieta30pu      ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
                 fill_hist(h.dReta30pu            ,tcThisJet[['dR','pT']].values)
 
@@ -368,26 +377,36 @@ nunmatchedJets = max(nunmatchedJets,1)
 if not skipFill:
     h.dRgall.Scale(1.0/nmatchedJets)
     h.dRptall.Scale(1.0/nmatchedJets)
-    h.isoowenplotall.Scale(1.0/nmatchedJets)
+    h.iso_PUsub_all.Scale(1.0/nmatchedJets)
+    h.iso_noPUsub_all.Scale(1.0/nmatchedJets)
     h.dReta15.Scale(1.0/nmatchedJets)
-    h.isoowenploteta15.Scale(1.0/nmatchedJets)
+    h.iso_PUsub_eta15.Scale(1.0/nmatchedJets)
+    h.iso_noPUsub_eta15.Scale(1.0/nmatchedJets)
     h.dReta20.Scale(1.0/nmatchedJets)
-    h.isoowenploteta20.Scale(1.0/nmatchedJets)
+    h.iso_PUsub_eta20.Scale(1.0/nmatchedJets)
+    h.iso_noPUsub_eta20.Scale(1.0/nmatchedJets)
     h.dReta25.Scale(1.0/nmatchedJets)
-    h.isoowenploteta25.Scale(1.0/nmatchedJets)
+    h.iso_PUsub_eta25.Scale(1.0/nmatchedJets)
+    h.iso_noPUsub_eta25.Scale(1.0/nmatchedJets)
     h.dReta30.Scale(1.0/nmatchedJets)
-    h.isoowenploteta30.Scale(1.0/nmatchedJets)
+    h.iso_PUsub_eta30.Scale(1.0/nmatchedJets)
+    h.iso_noPUsub_eta30.Scale(1.0/nmatchedJets)
     
     h.dRgallpu.Scale(1.0/nunmatchedJets)
     h.dRptallpu.Scale(1.0/nunmatchedJets)
-    h.isoowenplotallpu.Scale(1.0/nunmatchedJets)
+    h.iso_PUsub_allpu.Scale(1.0/nunmatchedJets)
+    h.iso_noPUsub_allpu.Scale(1.0/nunmatchedJets)
     h.dReta15pu.Scale(1.0/nunmatchedJets)
-    h.isoowenploteta15pu.Scale(1.0/nunmatchedJets)
+    h.iso_PUsub_eta15pu.Scale(1.0/nunmatchedJets)
+    h.iso_noPUsub_eta15pu.Scale(1.0/nunmatchedJets)
     h.dReta20pu.Scale(1.0/nunmatchedJets)
-    h.isoowenploteta20pu.Scale(1.0/nunmatchedJets)
+    h.iso_PUsub_eta20pu.Scale(1.0/nunmatchedJets)
+    h.iso_noPUsub_eta20pu.Scale(1.0/nunmatchedJets)
     h.dReta25pu.Scale(1.0/nunmatchedJets)
-    h.isoowenploteta25pu.Scale(1.0/nunmatchedJets)
+    h.iso_PUsub_eta25pu.Scale(1.0/nunmatchedJets)
+    h.iso_noPUsub_eta25pu.Scale(1.0/nunmatchedJets)
     h.dReta30pu.Scale(1.0/nunmatchedJets)
-    h.isoowenploteta30pu.Scale(1.0/nunmatchedJets)
+    h.iso_PUsub_eta30pu.Scale(1.0/nunmatchedJets)
+    h.iso_noPUsub_eta30pu.Scale(1.0/nunmatchedJets)
     
     h.hcalhisto.Write()
