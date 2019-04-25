@@ -9,6 +9,11 @@ class MakeHist():
         self.genVsClusterPt = TH2F("genVsClusterPt","pT of gen parton vs pT of clustered jet", 100,0,200, 100,0,200)
         self.genVsClusterPt_puSub = TH2F("genVsClusterPt_puSub","pT of gen parton vs PU subtracted pT of clustered jet", 100,0,200, 100,0,200)
 
+        self.jetCount = TH1F("jetCount","count gen, matched, and unmatched jets", 3,0,3)
+
+        self.genPtVsClusterIso = TH2F("genPtVsClusterIso","pT of gen parton vs iso clustered jet", 100,0,200, 100,0,10)
+        self.clusterPtVsClusterIso = TH2F("clusterPtVsClusterIso","pT of clustered jet vs iso clustered jet", 100,0,200, 100,0,10)
+
         self.jetPt = TH1F("jetPt","pt of clustered jet",100,0,200)
         self.jetPt_puSub = TH1F("jetPt_puSub","pt of clustered jet with PU subtraction",100,0,200)
 

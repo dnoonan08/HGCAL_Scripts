@@ -35,10 +35,14 @@ if not (args.vbf or args.particlegun):
     print "Specify vbf or particle gun"
     exit()
 
+import sys
 import uproot
 import numpy as np
 #import pandas as pd
 from root_numpy import fill_hist
+
+print "Using uproot version:",uproot.__version__
+print "uproot path location:",uproot.__file__
 
 import gc
 
@@ -96,15 +100,17 @@ for fName in dirContentsList:
     if fileNameContent in fName:
         fileList.append("root://cmseos.fnal.gov/%s"%(fName))
 
-print args.job
 if "/" in args.job:
-    jobN = int(args.job.split('/')[0])
-    nJobs = int(args.job.split('/')[1])
-    totalFiles = len(fileList)
-    filesPerJob = int(round(totalFiles/nJobs+.4999))
+    if not args.job=='1/1': 
+        print "Running job",args.job
 
-    fileList = fileList[(jobN-1)*filesPerJob:jobN*filesPerJob]
-    outputFileName = outputFileName.replace(".root","_%iof%i.root"%(jobN, nJobs))
+        jobN = int(args.job.split('/')[0])
+        nJobs = int(args.job.split('/')[1])
+        totalFiles = len(fileList)
+        filesPerJob = int(round(totalFiles/nJobs+.4999))
+
+        fileList = fileList[(jobN-1)*filesPerJob:jobN*filesPerJob]
+        outputFileName = outputFileName.replace(".root","_%iof%i.root"%(jobN, nJobs))
 
 h = MakeHist(outputFileName)
 
@@ -265,6 +271,9 @@ for fName in fileList:
             h.iso_PUsub_all.Fill(isoowen)
             h.iso_noPUsub_all.Fill(B/A)
 
+            h.genPtVsClusterIso.Fill(genjetVector[genMatch[i],0],isoowen)
+            h.clusterPtVsClusterIso.Fill(_jets[j].pt,isoowen)
+
             fill_hist(h.detadphiall   ,tcThisJet[['dEta','dPhi']].values,tcThisJet.pT.values)
             fill_hist(h.dRgall        ,tcThisJet[['dR','energy']].values)
             fill_hist(h.dRptall       ,tcThisJet[['dR','pT']].values)
@@ -296,9 +305,6 @@ for fName in fileList:
                 h.iso_noPUsub_eta30.Fill(B/A)
                 fill_hist(h.detadphieta30        ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
                 fill_hist(h.dReta30              ,tcThisJet[['dR','pT']].values)
-
-        del genjetVector
-        gc.collect()
 
         if args.time:
             print "    process Matched in", time.clock()-start
@@ -357,15 +363,26 @@ for fName in fileList:
 
         if args.time:
             print "    process UnMatched in", time.clock()-start
-        del tc
-        gc.collect()
 
 	nmatchedJets=nmatchedJets + len(matchedJets)
 	nunmatchedJets=nunmatchedJets + len(unmatchedJets)
+
+        h.jetCount.Fill(0,len(genjetVector))
+        h.jetCount.Fill(1,len(matchedJets))
+        h.jetCount.Fill(2,len(unmatchedJets))
+
+        del tc
+        del genjetVector
+        gc.collect()
+
+        
     
     del fulldf
     del fulldfGen
     gc.collect()
+
+    sys.stdout.flush()
+
 
 print  '===nGenParticlesinHGCAL', nGenParticlesinHGCAL
 print  '===matchedjets', nmatchedJets
