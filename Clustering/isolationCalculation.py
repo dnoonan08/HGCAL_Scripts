@@ -18,6 +18,7 @@ parser.add_argument('--job', default="1/1", help="parallelization jobs, job numb
 
 parser.add_argument('--verbose','-v',action='store_true',help='Print verbose output of matching')
 parser.add_argument('--time',action='store_true',help='Print time information per event')
+parser.add_argument('--minpt', default=20., type=float)
 
 parser.add_argument('--genjet',action='store_true',help='Use genJet instead of gen partons')
 parser.add_argument('--tcCut', default=-1., type=float,help='mipPT cut to apply to trigger cells')
@@ -86,6 +87,11 @@ if args.tcCut>-1:
 
 if args.simEnergyCut>-1:
     outputFileName = outputFileName.replace(".root","_simEnergy_gt_%i.root"%int(args.simEnergy))
+
+if args.genjet:
+    outputFileName = outputFileName.replace(".root","_matchToGenJets.root")
+else:
+    outputFileName = outputFileName.replace(".root","_matchToGenPart.root")
 
 if not args.name=="":
     outputFileName = outputFileName.replace(".root","_%s.root"%args.name)
@@ -178,7 +184,7 @@ for fName in fileList:
         if args.time:
             print "    Loaded in", time.clock()-start
         clusterVals = cluster(tcVectors,R=0.4,algo="antikt")
-        _jets = clusterVals.inclusive_jets(ptmin=20)
+        _jets = clusterVals.inclusive_jets(ptmin=args.minpt)
         if args.time:
             print "    Clustered jets in", time.clock()-start
             print "      --- len =",len(tcVectors), (time.clock()-start)/len(tcVectors)
@@ -195,15 +201,9 @@ for fName in fileList:
         else:
             genjetDF = fulldfGen.loc[i_event,['genjet_pt','genjet_eta','genjet_phi','genjet_energy']]
             genjetDF.columns = ['gen_pt','gen_eta','gen_phi','gen_energy']
+            genjetDF = genjetDF[(abs(genjetDF.gen_eta)>1.5) & (abs(genjetDF.gen_eta)<3.) & (genjetDF.gen_pt>10)]
             
-        if args.draw:
-            if args.vbf:
-                figureName = "Plots/JetAreas_VBF_%i.pdf"%i_event
-            if args.particlegun:
-                figureName = "Plots/JetAreas_pid_%i_%i.pdf"%(args.pid,i_event)
-
-            drawJets.drawJets(jets = _jets,name = figureName ,genjet_eta = genjetDF.gen_eta.values, genjet_phi = genjetDF.gen_phi.values,label = "test")
-
+            
 
         fill_hist(h.genJetPt   ,genjetDF.gen_pt.values)
 
@@ -215,7 +215,7 @@ for fName in fileList:
 
         matchedJets = []
         genMatch = []
-
+        isGenMatched=[]
 
         for i in range(len(genjetVector)):
             foundMatch = False
@@ -232,6 +232,7 @@ for fName in fileList:
                     genMatch.append(i)
                     foundMatch = True
                     break   
+            isGenMatched.append(foundMatch)
             if args.verbose:
                 if not foundMatch:
                     print "No Match Found"
@@ -239,6 +240,14 @@ for fName in fileList:
         if args.time:
             print "    GenMatch in", time.clock()-start
             print "       Matched %i jets"%len(matchedJets)
+
+
+        if args.draw:
+            figureName = "Plots/JetAreas_%s"%(outputFileName.replace(".root","_%i.pdf"%i_event))
+            if args.genjet:
+                drawJets.drawJets(jets = _jets,name = figureName ,genjet_pt = genjetDF.gen_pt.values, genjet_eta = genjetDF.gen_eta.values, genjet_phi = genjetDF.gen_phi.values, genjet_matched=isGenMatched)
+            else:
+                drawJets.drawJets(jets = _jets,name = figureName ,genjet_pt = genjetDF.gen_pt.values, genjet_eta = genjetDF.gen_eta.values, genjet_phi = genjetDF.gen_phi.values, genjet_pid = genjetDF.gen_pdgid.values, genjet_matched=isGenMatched)
 
         unmatchedJets = [x for x in range(len(_jets)) if x not in matchedJets]
         unmatchedGen = [x for x in range(len(genjetVector)) if x not in genMatch]
