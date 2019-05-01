@@ -1,7 +1,8 @@
 import numpy as np
 from mapSuperTC import superTCMap2x2
+from getGeometry import getSuperTCGeometry
 
-def superTCMerging(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi','tc_energy','tc_simenergy','tc_x','tc_y','tc_cell'], useMaxPtLocation=True, superTCMap = None):
+def superTCMerging(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi','tc_energy','tc_simenergy','tc_x','tc_y','tc_cell'], useMaxPtLocation=True, superTCMap = None, geomVersion="V9"):
 
     fulldf["tc_superTC"] = np.where(fulldf.tc_subdet==5,fulldf.tc_cell,fulldf['tc_cell'].map(superTCMap))
 
@@ -29,18 +30,36 @@ def superTCMerging(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi','tc_energy
             superTC['tc_z'] = fullDFmax['tc_z']
 
     else:
-        groups = {x:"sum" for x in mergedBranches}
+        geomDF = getSuperTCGeometry(geomVersion=geomVersion, superTCMap=superTCMap)
+
+        superTC = superTCGroup.sum()
+
+        superTC.reset_index(inplace=True)
+        superTC.set_index(['tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'],inplace=True)
         if 'tc_eta' in mergedBranches:
-            groups['tc_eta']="mean"
+            superTC.tc_eta=geomDF.tc_eta
         if 'tc_phi' in mergedBranches:
-            groups['tc_phi']="mean"
+            superTC.tc_phi=geomDF.tc_phi
         if 'tc_x' in mergedBranches:
-            groups['tc_x']="mean"
+            superTC.tc_x=geomDF.tc_x
         if 'tc_y' in mergedBranches:
-            groups['tc_y']="mean"
+            superTC.tc_y=geomDF.tc_y
         if 'tc_z' in mergedBranches:
-            groups['tc_z']="mean"
-        superTC = superTCGroup.agg(groups)
+            superTC.tc_z=geomDF.tc_z
+        superTC.set_index(['entry'],append=True,inplace=True)
+        
+        # groups = {x:"sum" for x in mergedBranches}
+        # if 'tc_eta' in mergedBranches:
+        #     groups['tc_eta']="mean"
+        # if 'tc_phi' in mergedBranches:
+        #     groups['tc_phi']="mean"
+        # if 'tc_x' in mergedBranches:
+        #     groups['tc_x']="mean"
+        # if 'tc_y' in mergedBranches:
+        #     groups['tc_y']="mean"
+        # if 'tc_z' in mergedBranches:
+        #     groups['tc_z']="mean"
+        # superTC = superTCGroup.agg(groups)
 
     superTC = superTC[mergedBranches]
     superTC.reset_index(inplace=True)
