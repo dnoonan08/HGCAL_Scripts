@@ -1,41 +1,13 @@
-import uproot
 import numpy as np
+from mapSuperTC import superTCMap2x2
 
-import pandas as pd
+def superTCMerging(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi','tc_energy','tc_simenergy','tc_x','tc_y','tc_cell'], useMaxPtLocation=True, superTCMap = None):
 
-from pyjet import cluster,DTYPE_EP,DTYPE_PTEPM
+    fulldf["tc_superTC"] = np.where(fulldf.tc_subdet==5,fulldf.tc_cell,fulldf['tc_cell'].map(superTCMap))
 
-from mapSuperTC import superTCMap2x2, superTCMap4x4
+    columns = ['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC']+mergedBranches
+    superTCGroup = fulldf.reset_index().loc[:,columns].groupby(['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'])
 
-doSuperTC = True
-
-superTCMap = superTCMap2x2
-
-useMaxPtLocation = True
-
-print "Starting"
-
-fName = "root://cmseos.fnal.gov//store/user/dnoonan/HGCAL_Concentrator/L1THGCal_Ntuples/Electron_Particle_Gun/ntuple_etaphiTower_pid11_pt50_eta15-30_0PU_0.root"
-
-#use uproot (available from CMSSW after 10X) to load ntuples from root files into numpy arrays
-_tree = uproot.open(fName,xrootdsource=dict(chunkbytes=1024**3, limitbytes=1024**3))["hgcalTriggerNtuplizer/HGCalTriggerNtuple"]
-
-N = _tree.numentries
-
-N = 5
-
-print "File %s"%fName
-fulldf = _tree.pandas.df(["tc_subdet","tc_zside","tc_layer","tc_wafer","tc_cell","tc_pt","tc_energy","tc_simenergy","tc_eta","tc_mipPt","tc_phi"],entrystart=0, entrystop=N)
-
-fulldfGen = _tree.pandas.df(["gen_pt","gen_eta","gen_phi","gen_pdgid","gen_status"],entrystart=0, entrystop=N)
-
-fulldf["tc_superTC"] = np.where(fulldf.tc_subdet==5,fulldf.tc_cell,fulldf['tc_cell'].map(superTCMap))
-#initDF = fulldf
-
-#print fulldf.head(30)
-
-if doSuperTC:
-    superTCGroup = fulldf.reset_index().loc[:,['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC','tc_pt','tc_eta','tc_phi']].groupby(['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'])
 
     if useMaxPtLocation:
         fullDFmax = fulldf.reset_index().sort_values('tc_pt', ascending=False).drop_duplicates(['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'])
@@ -43,34 +15,52 @@ if doSuperTC:
         fullDFmax.set_index(['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'],inplace=True)
 
         superTC = superTCGroup.sum()
-        superTC['tc_eta'] = fullDFmax['tc_eta']
-        superTC['tc_phi'] = fullDFmax['tc_phi']
-
+        if 'tc_cell' in mergedBranches: 
+            superTC['tc_cell'] = fullDFmax['tc_cell']
+        if 'tc_eta' in mergedBranches:
+            superTC['tc_eta'] = fullDFmax['tc_eta']
+        if 'tc_phi' in mergedBranches:
+            superTC['tc_phi'] = fullDFmax['tc_phi']
+        if 'tc_x' in mergedBranches:
+            superTC['tc_x'] = fullDFmax['tc_x']
+        if 'tc_y' in mergedBranches:
+            superTC['tc_y'] = fullDFmax['tc_y']
+        if 'tc_z' in mergedBranches:
+            superTC['tc_z'] = fullDFmax['tc_z']
 
     else:
-#        superTCGroup = fulldf.loc[:,['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC','tc_pt','tc_eta','tc_phi']].groupby(['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'])
-        superTC = superTCGroup.agg({"tc_pt":"sum","tc_eta":"mean","tc_phi":"mean"})
+        groups = {x:"sum" for x in mergedBranches}
+        if 'tc_eta' in mergedBranches:
+            groups['tc_eta']="mean"
+        if 'tc_phi' in mergedBranches:
+            groups['tc_phi']="mean"
+        if 'tc_x' in mergedBranches:
+            groups['tc_x']="mean"
+        if 'tc_y' in mergedBranches:
+            groups['tc_y']="mean"
+        if 'tc_z' in mergedBranches:
+            groups['tc_z']="mean"
+        superTC = superTCGroup.agg(groups)
 
+    superTC = superTC[mergedBranches]
+    superTC.reset_index(inplace=True)
+    superTC.set_index(['entry'],inplace=True)
+    return superTC
 
-    fulldf = superTC[['tc_pt','tc_eta','tc_phi']]
-#    fulldf = superTC[['entry','tc_pt','tc_eta','tc_phi']]
-#    fulldf.index = fulldf.entry
+def superTCMerging_Fractional(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi','tc_energy','tc_simenergy','tc_x','tc_y','tc_cell'], useMaxPtLocation=True, superTCMap = None):
 
-for i_event in range(N):
-    print "     %i"%i_event
+    fulldfMerged = superTCMerging(fulldf,mergedBranches = mergedBranches, useMaxPtLocation=useMaxPtLocation, superTCMap = superTCMap)
+    fulldf.reset_index(inplace=True)
+    fulldf.set_index(['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'],inplace=True)
+    fulldfMerged.reset_index(inplace=True)
+    fulldfMerged.set_index(['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'],inplace=True)
+    fulldf['supertc_pt'] = fulldfMerged['tc_pt']
+    fulldf['tc_frac'] = fulldf['tc_pt']/fulldf['supertc_pt']
 
-    tc = fulldf.loc[i_event,['tc_pt','tc_eta','tc_phi']]
+    
+    columns = ['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC']+mergedBranches+['supertc_pt','tc_frac']
+    fulldf.reset_index(inplace=True)
+    fulldf = fulldf[columns]
+    fulldf.set_index(['entry'],inplace=True)
 
-    tc.columns=["pT","eta","phi"]
-    tc = tc.assign(mass=0.)
-
-    #go dataframe to np array, formatted for input into fastjet    
-    tcVectors = np.array(tc.to_records(index=False).astype([(u'pT', '<f8'), (u'eta', '<f8'), (u'phi', '<f8'), (u'mass', '<f8')]) )
-
-
-    clusterVals = cluster(tcVectors,R=0.4,algo="antikt")
-    _jets = clusterVals.inclusive_jets(ptmin=5)
-
-    for i,jet in enumerate(_jets):
-        print "Jet %i: pt=%.3f phi=%.3f eta=%.3f"%(i, jet.pt, jet.phi, jet.eta)
-
+    return fulldf
