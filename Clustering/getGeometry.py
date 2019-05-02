@@ -13,6 +13,12 @@ def getTCGeometry(geomVersion="V9"):
     geomDF['phi'] = np.arctan(geomDF.y / geomDF.x) + (geomDF.x<0)*((geomDF.y>0)*np.pi - (geomDF.y<0)*np.pi)
     geomDF['eta'] = np.arcsinh(geomDF.z/geomDF.r)
 
+    #add 28 to the layer number for subdets 4 & 5, to match what's in the tc dataframe 
+    if geomVersion.upper()=="V9":
+        geomDF['layer'] = geomDF.layer + (geomDF.subdet>3)*28
+    if geomVersion.upper()=="V8":
+        geomDF['layer'] = geomDF.layer + (geomDF.subdet==4)*28 + (geomDF.subdet==5)*40
+
     geomDF = geomDF[['subdet','zside','layer','wafer','triggercell','x','y','z','eta','phi']]
     geomDF.columns =['tc_subdet','tc_zside','tc_layer','tc_wafer','tc_cell','tc_x','tc_y','tc_z','tc_eta','tc_phi']
     geomDF.set_index(['tc_subdet','tc_zside','tc_layer','tc_wafer','tc_cell'],inplace=True)
@@ -29,5 +35,5 @@ def getSuperTCGeometry(geomVersion="V9", superTCMap=superTCMap2x2):
 
 
 if __name__=="__main__":
-    geomDF = getSuperTCGeometry()
+    geomDF = getSuperTCGeometry("V8")
     print geomDF
