@@ -12,7 +12,6 @@ parser.add_argument('--pu', default=140, type=int)
 parser.add_argument('--pt', default=50, type=int)
 
 parser.add_argument('-N', "-n", default=-1, type=int)
-#parser.add_argument('--NFiles', "--nFiles", default=-1, type=int)
 parser.add_argument('--name', default="")
 parser.add_argument('--job', default="1/1", help="parallelization jobs, job number over total number of jobs for splitting up files")
 
@@ -25,6 +24,8 @@ parser.add_argument('--tcCut', default=-1., type=float,help='mipPT cut to apply 
 parser.add_argument('--simEnergyCut', default=-1., type=float,help='simEnergy cut to apply to trigger cells')
 
 parser.add_argument('--draw',action='store_true',help='Draw jet clusters')
+parser.add_argument('--V8','--v8',action='store_true',help='Use V8 geometry')
+
 args = parser.parse_args()
 
 print args
@@ -70,16 +71,27 @@ skipFill = False
 fileRage = []
 fileName = ""
 
+if args.V8:
+    if args.particlegun:
+        eosDir = "/store/user/dnoonan/HGCAL_Concentrator/L1THGCal_Ntuples/Particle_Gun/"
+        if args.pid==11:
+            eosDir = "/store/user/dnoonan/HGCAL_Concentrator/L1THGCal_Ntuples/Electron_Particle_Gun/"
+        fileNameContent = "ntuple_etaphiTower_pid%i_pt%i_eta15-30_%iPU"%(args.pid, args.pt, args.pu)
+        outputFileName = "particleGun_pid%i_pt%i_eta15-30_%iPU.root"%(args.pid, args.pt, args.pu)
 
-if args.particlegun:
-    eosDir = "/store/user/dnoonan/HGCAL_Concentrator/L1THGCal_Ntuples/Particle_Gun/"
-    fileNameContent = "ntuple_etaphiTower_pid%i_pt%i_eta15-30_%iPU"%(args.pid, args.pt, args.pu)
-    outputFileName = "particleGun_pid%i_pt%i_eta15-30_%iPU.root"%(args.pid, args.pt, args.pu)
+    if args.vbf:
+        eosDir = "/store/user/dnoonan/HGCAL_Concentrator/L1THGCal_Ntuples/VBF_Samples/"
+        fileNameContent = "ntuple_hgcalNtuples_vbf_hmm_%iPU"%(args.pu)
+        outputFileName = "VBF_%iPU.root"%(args.pu)
+else:
+    eosDir = "/store/user/dnoonan/HGCAL_Concentrator/L1THGCal_Ntuples/Electron_Particle_Gun_V9/"
+    if args.particlegun:
+        fileNameContent = "ntuple_hgcalNtuples_pgun_pid%i_pt%i_eta15-30_%iPU"%(args.pid, args.pt, args.pu)
+        outputFileName = "particleGun_pid%i_pt%i_eta15-30_%iPU.root"%(args.pid, args.pt, args.pu)
+    if args.vbf:
+        fileNameContent = "ntuple_hgcalNtuples_vbf_hmm_%iPU"%(args.pu)
+        outputFileName = "VBF_%iPU.root"%(args.pu)
 
-if args.vbf:
-    eosDir = "/store/user/dnoonan/HGCAL_Concentrator/L1THGCal_Ntuples/VBF_Samples/"
-    fileNameContent = "ntuple_hgcalNtuples_vbf_hmm_%iPU"%(args.pu)
-    outputFileName = "VBF_%iPU.root"%(args.pu)
 
 if args.tcCut>-1:
     print "HERE"
@@ -92,6 +104,9 @@ if args.genjet:
     outputFileName = outputFileName.replace(".root","_matchToGenJets.root")
 else:
     outputFileName = outputFileName.replace(".root","_matchToGenPart.root")
+
+if args.V8:
+    outputFileName = outputFileName.replace(".root","_geomV8.root")
 
 if not args.name=="":
     outputFileName = outputFileName.replace(".root","_%s.root"%args.name)
@@ -197,7 +212,7 @@ for fName in fileList:
             if args.vbf:
                 genjetDF = genjetDF[(genjetDF.gen_status==23) & (abs(genjetDF.gen_pdgid)<6) & (abs(genjetDF.gen_eta)>1.5) & (abs(genjetDF.gen_eta)<3.)]
             else:
-                genjetDF = genjetDF[(genjetDF.gen_status==23) & (abs(genjetDF.gen_pdgid)==args.pid) & (abs(genjetDF.gen_eta)>1.5) & (abs(genjetDF.gen_eta)<3.)]
+                genjetDF = genjetDF[((genjetDF.gen_status==1) | (genjetDF.gen_status==23)) & (abs(genjetDF.gen_pdgid)==args.pid) & (abs(genjetDF.gen_eta)>1.5) & (abs(genjetDF.gen_eta)<3.)]
         else:
             genjetDF = fulldfGen.loc[i_event,['genjet_pt','genjet_eta','genjet_phi','genjet_energy']]
             genjetDF.columns = ['gen_pt','gen_eta','gen_phi','gen_energy']
