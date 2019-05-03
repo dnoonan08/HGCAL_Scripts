@@ -6,6 +6,9 @@ def getTCGeometry(geomVersion="V9"):
     print "loading trigger cell geometry"
     fName = "root://cmseos.fnal.gov//store/user/dnoonan/HGCAL_Concentrator/triggerGeom%s.root"%geomVersion.upper()
 
+    if not geomVersion.upper() in ['V8','V9-0','V9']:
+        raise Exception("The geometry %s is not supported, please use one of the following: ['V8','V9-0','V9']"%geomVersion.upper())
+
     _tree = uproot.open(fName,xrootdsource=dict(chunkbytes=1024**3, limitbytes=1024**3))["hgcaltriggergeomtester/TreeTriggerCells"]
 
     geomDF = _tree.pandas.df(['subdet','zside','layer','wafer','triggercell','x','y','z'])
@@ -15,6 +18,8 @@ def getTCGeometry(geomVersion="V9"):
 
     #add 28 to the layer number for subdets 4 & 5, to match what's in the tc dataframe 
     if geomVersion.upper()=="V9":
+        geomDF['layer'] = geomDF.layer + (geomDF.subdet>3)*28
+    if geomVersion.upper()=="V9-0":
         geomDF['layer'] = geomDF.layer + (geomDF.subdet>3)*28
     if geomVersion.upper()=="V8":
         geomDF['layer'] = geomDF.layer + (geomDF.subdet==4)*28 + (geomDF.subdet==5)*40
