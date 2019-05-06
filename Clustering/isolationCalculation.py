@@ -26,6 +26,9 @@ parser.add_argument('--simEnergyCut', default=-1., type=float,help='simEnergy cu
 parser.add_argument('--draw',action='store_true',help='Draw jet clusters')
 parser.add_argument('--V8','--v8',action='store_true',help='Use V8 geometry')
 
+parser.add_argument('--superTC',choices=['2x2','4x4'],default=None,help='Use super trigger cells, specify option of 2x2 or 4x4')
+parser.add_argument('--superTCCenter',action='store_true',help='Use super trigger cells with location at center rather than max cell')
+
 args = parser.parse_args()
 
 print args
@@ -108,6 +111,12 @@ else:
 if args.V8:
     outputFileName = outputFileName.replace(".root","_geomV8.root")
 
+if args.superTC:
+    outputFileName = outputFileName.replace(".root","_superTC%s.root"%args.superTC)
+
+    if args.superTCCenter:
+        outputFileName = outputFileName.replace(".root","Centered.root")
+
 if not args.name=="":
     outputFileName = outputFileName.replace(".root","_%s.root"%args.name)
 
@@ -161,7 +170,31 @@ for fName in fileList:
         totalN += _tree.numentries
 
     print "File %s"%fName
-    fulldf = _tree.pandas.df(["tc_pt","tc_energy","tc_eta","tc_mipPt","tc_simenergy","tc_phi"],entrystart=0,entrystop=N)
+
+    branches = ["tc_pt","tc_energy","tc_eta","tc_mipPt","tc_simenergy","tc_phi"]
+    if args.superTC:
+        branches = ["tc_subdet","tc_zside","tc_layer","tc_wafer","tc_cell"] + branches
+
+
+    fulldf = _tree.pandas.df(branches,entrystart=0,entrystop=N)
+
+    
+    if args.superTC:
+        from mapSuperTC import superTCMap2x2, superTCMap4x4
+        from superTriggerCellGrouping import superTCMerging
+        if args.superTC=='2x2':
+            superTCMap = superTCMap2x2
+        if args.superTC=='4x4':
+            superTCMap = superTCMap4x4
+        geomVersion = "V9"
+        if args.V8:
+            geomVersion = "V8"
+        useMaxPtLocation = not args.superTCCenter
+
+        fulldf = superTCMerging(fulldf, mergedBranches=['tc_pt','tc_energy','tc_eta','tc_phi','tc_mipPt','tc_simenergy'], useMaxPtLocation=useMaxPtLocation, geomVersion=geomVersion, superTCMap = superTCMap)
+
+
+
     fulldf = fulldf[(fulldf.tc_mipPt > args.tcCut) & (fulldf.tc_simenergy > args.simEnergyCut)]
     gc.collect()
     # if args.tcCut>-1:
