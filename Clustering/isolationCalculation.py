@@ -1,4 +1,4 @@
-###
+2###
 # code based on simpleNewVBFreal.py from Uttiya Sarkar
 ###
 
@@ -8,7 +8,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--vbf',help='Run on VBF samples', action='store_true')
 parser.add_argument('--particlegun','--pgun',help='Run on Particle Gun samples', action='store_true',dest='particlegun')
 parser.add_argument('--pid', default=1, type=int)
-parser.add_argument('--pu', default=140, type=int)
+parser.add_argument('--pu', default=0, type=int)
 parser.add_argument('--pt', default=50, type=int)
 
 parser.add_argument('-N', "-n", default=-1, type=int)
@@ -55,7 +55,7 @@ from subprocess import Popen,PIPE
 
 from pyjet import cluster,DTYPE_EP,DTYPE_PTEPM
 #import histvbf as h
-from histIso import *
+#from histIso import *
 
 print "Starting"
 
@@ -103,10 +103,10 @@ if args.tcCut>-1:
 if args.simEnergyCut>-1:
     outputFileName = outputFileName.replace(".root","_simEnergy_gt_%i.root"%int(args.simEnergy))
 
-if args.genjet:
-    outputFileName = outputFileName.replace(".root","_matchToGenJets.root")
-else:
-    outputFileName = outputFileName.replace(".root","_matchToGenPart.root")
+# if args.genjet:
+#     outputFileName = outputFileName.replace(".root","_matchToGenJets.root")
+# else:
+#     outputFileName = outputFileName.replace(".root","_matchToGenPart.root")
 
 if args.V8:
     outputFileName = outputFileName.replace(".root","_geomV8.root")
@@ -142,9 +142,12 @@ if "/" in args.job:
         fileList = fileList[(jobN-1)*filesPerJob:jobN*filesPerJob]
         outputFileName = outputFileName.replace(".root","_%iof%i.root"%(jobN, nJobs))
 
-h = MakeHist(outputFileName)
+from makeIsoTree import *
+
+output = IsoOutputTree(outputFileName)
 
 totalN = 0       
+
 # if args.NFiles==-1:
 #     nFiles = len(fileList)
 # else:
@@ -201,10 +204,8 @@ for fName in fileList:
     #     fulldf = fulldf[fulldf.tc_mipPt > args.tcCut]
     # if args.simEnergyCut>-1:
     #     fulldf = fulldf[fulldf.tc_simenergy > args.simEnergyCut]
-    if not args.genjet:
-        fulldfGen = _tree.pandas.df(["gen_pt","gen_eta","gen_phi","gen_status","gen_pdgid","gen_energy"],entrystart=0,entrystop=N)
-    else:
-        fulldfGen = _tree.pandas.df(["genjet_pt","genjet_eta","genjet_phi","genjet_energy"],entrystart=0,entrystop=N)
+    fulldfGen = _tree.pandas.df(["gen_pt","gen_eta","gen_phi","gen_status","gen_pdgid","gen_energy"],entrystart=0,entrystop=N)
+    fulldfGenJet = _tree.pandas.df(["genjet_pt","genjet_eta","genjet_phi","genjet_energy"],entrystart=0,entrystop=N)
 
     del _tree
     gc.collect()
@@ -212,6 +213,8 @@ for fName in fileList:
     print "Loaded Tree"
     if args.time:
         print "Loaded tree ", time.clock()-start
+
+
 
 
     for i_event in range(N):
@@ -240,196 +243,164 @@ for fName in fileList:
         del clusterVals
         gc.collect()
 
-        if not args.genjet:
-            genjetDF = fulldfGen.loc[i_event,['gen_pt','gen_eta','gen_phi','gen_status','gen_pdgid','gen_energy']]
-            if args.vbf:
-                genjetDF = genjetDF[(genjetDF.gen_status==23) & (abs(genjetDF.gen_pdgid)<6) & (abs(genjetDF.gen_eta)>1.5) & (abs(genjetDF.gen_eta)<3.)]
-            else:
-                genjetDF = genjetDF[((genjetDF.gen_status==1) | (genjetDF.gen_status==23)) & (abs(genjetDF.gen_pdgid)==args.pid) & (abs(genjetDF.gen_eta)>1.5) & (abs(genjetDF.gen_eta)<3.)]
+        genDF = fulldfGen.loc[i_event,['gen_pt','gen_eta','gen_phi','gen_status','gen_pdgid','gen_energy']]
+        if args.vbf:
+            genDF = genDF[(genDF.gen_status==23) & (abs(genDF.gen_pdgid)<6) & (abs(genDF.gen_eta)>1.5) & (abs(genDF.gen_eta)<3.)]
         else:
-            genjetDF = fulldfGen.loc[i_event,['genjet_pt','genjet_eta','genjet_phi','genjet_energy']]
-            genjetDF.columns = ['gen_pt','gen_eta','gen_phi','gen_energy']
-            genjetDF = genjetDF[(abs(genjetDF.gen_eta)>1.5) & (abs(genjetDF.gen_eta)<3.) & (genjetDF.gen_pt>10)]
-            
-            
+            genDF = genDF[((genDF.gen_status==1) | (genDF.gen_status==23)) & (abs(genDF.gen_pdgid)==args.pid) & (abs(genDF.gen_eta)>1.5) & (abs(genDF.gen_eta)<3.)]
 
-        fill_hist(h.genJetPt   ,genjetDF.gen_pt.values)
 
-        genjetVector = genjetDF.values
-        
-        nGenParticlesinHGCAL += len(genjetVector)
+        genJetDF = fulldfGenJet.loc[i_event,['genjet_pt','genjet_eta','genjet_phi','genjet_energy']]
+        genJetDF.columns = ['gen_pt','gen_eta','gen_phi','gen_energy']
+        genJetDF = genJetDF[(abs(genJetDF.gen_eta)>1.5) & (abs(genJetDF.gen_eta)<3.) & (genJetDF.gen_pt>10)]
+            
+        output.nGen[0] = len(genDF)
+        output.nGenJet[0] = len(genJetDF)
+        for i in range(output.nGen[0]):
+            output.genPt[i] = genDF.gen_pt.values[i]
+            output.genEta[i] = genDF.gen_eta.values[i]
+            output.genPhi[i] = genDF.gen_phi.values[i]
+            output.genEn[i] = genDF.gen_energy.values[i]
+            output.genPID[i] = genDF.gen_pdgid.values[i]
+
+        for i in range(output.nGenJet[0]):
+            output.genJetPt[i] = genJetDF.gen_pt.values[i]
+            output.genJetEta[i] = genJetDF.gen_eta.values[i]
+            output.genJetPhi[i] = genJetDF.gen_phi.values[i]
+            output.genJetEn[i] = genJetDF.gen_energy.values[i]
+
+
         if args.time:
             print "    Got Gen in", time.clock()-start
 
-        matchedJets = []
-        genMatch = []
-        isGenMatched=[]
+
+        isGenJetMatched=[]
+        genjetVector = genJetDF.values
+
+        if args.verbose:
+            print 'Gen Jets'
+
+        for j in range(len(_jets)):
+            output.jetGenMatch[j] = -1
+            output.jetGenJetMatch[j] = -1
+            output.jetMinGenDR[j] = 99
+            output.jetMinGenJetDR[j] = 99
+
 
         for i in range(len(genjetVector)):
             foundMatch = False
             if args.verbose:
                 print genjetVector[i][:4]
-            for j in range(len(_jets)):
-                 dRSq_jet_genjet=((_jets[j].eta-genjetVector[i,1])**2+(_jets[j].phi-genjetVector[i,2])**2)
+
+            for j,jet in enumerate(_jets):
+                 dR_jet_genjet=((jet.eta-genjetVector[i,1])**2+(jet.phi-genjetVector[i,2])**2)**0.5
+
+                 if dR_jet_genjet < output.jetMinGenJetDR[j]:
+                     output.jetMinGenJetDR[j] = dR_jet_genjet
 
                  if args.verbose:
-                     print "  --- %i %i %.5f\t%+.4f\t%+.4f\t%.5f"%(i, j, _jets[j].pt, _jets[j].eta, _jets[j].phi, dRSq_jet_genjet)
+                     print "  --- %i %i %.5f\t%+.4f\t%+.4f\t%.5f"%(i, j, jet.pt, jet.eta, jet.phi, dR_jet_genjet)
 
-                 if dRSq_jet_genjet<0.01:
-                    matchedJets.append(j)
-                    genMatch.append(i)
-                    foundMatch = True
-                    break   
+                 if dR_jet_genjet<0.1:
+                     output.jetGenJetMatch[j] = i
+                     foundMatch = True
+                     break   
+
+            isGenJetMatched.append(foundMatch)
+            if args.verbose:
+                if not foundMatch:
+                    print "No Match Found"
+
+        isGenMatched = []
+
+        genVector = genDF.values
+        if args.verbose:
+            print 'Gen Particles'
+
+        for i in range(len(genVector)):
+            foundMatch = False
+            if args.verbose:
+                print genVector[i][:4]
+
+            for j,jet in enumerate(_jets):
+                 dR_jet_gen=((jet.eta-genVector[i,1])**2+(jet.phi-genVector[i,2])**2)**0.5
+
+                 if dR_jet_gen < output.jetMinGenDR[j]:
+                     output.jetMinGenDR[j] = dR_jet_gen
+
+                 if args.verbose:
+                     print "  --- %i %i %.5f\t%+.4f\t%+.4f\t%.5f"%(i, j, jet.pt, jet.eta, jet.phi, dR_jet_gen)
+
+                 if dR_jet_gen<0.1:
+                     output.jetGenMatch[j] = i
+                     foundMatch = True
+                     break   
+
             isGenMatched.append(foundMatch)
             if args.verbose:
                 if not foundMatch:
                     print "No Match Found"
 
+
+
         if args.time:
             print "    GenMatch in", time.clock()-start
-            print "       Matched %i jets"%len(matchedJets)
 
 
         if args.draw:
             figureName = "Plots/JetAreas_%s"%(outputFileName.replace(".root","_%i.pdf"%i_event))
             if args.genjet:
-                drawJets.drawJets(jets = _jets,name = figureName ,genjet_pt = genjetDF.gen_pt.values, genjet_eta = genjetDF.gen_eta.values, genjet_phi = genjetDF.gen_phi.values, genjet_matched=isGenMatched)
+                drawJets.drawJets(jets = _jets,name = figureName ,genjet_pt = genjetDF.gen_pt.values, genjet_eta = genjetDF.gen_eta.values, genjet_phi = genjetDF.gen_phi.values, genjet_matched=isGenJetMatched)
             else:
-                drawJets.drawJets(jets = _jets,name = figureName ,genjet_pt = genjetDF.gen_pt.values, genjet_eta = genjetDF.gen_eta.values, genjet_phi = genjetDF.gen_phi.values, genjet_pid = genjetDF.gen_pdgid.values, genjet_matched=isGenMatched)
+                drawJets.drawJets(jets = _jets,name = figureName ,genjet_pt = genDF.gen_pt.values, genjet_eta = genDF.gen_eta.values, genjet_phi = genDF.gen_phi.values, genjet_pid = genDF.gen_pdgid.values, genjet_matched=isGenMatched)
 
-        unmatchedJets = [x for x in range(len(_jets)) if x not in matchedJets]
-        unmatchedGen = [x for x in range(len(genjetVector)) if x not in genMatch]
 
-        for i in range(len(matchedJets)):
-            j = matchedJets[i]
+        output.nJet[0] = len(_jets)
 
-            tc['dEta'] = tc['eta']-_jets[j].eta
-            tc['dPhi'] = tc['phi']-_jets[j].phi
+        for j,jet in enumerate(_jets):
+
+            tc['dEta'] = tc['eta']-jet.eta
+            tc['dPhi'] = tc['phi']-jet.phi
             tc['dR'] = (tc.dEta**2 + tc.dPhi**2)**0.5
             
-            cut = tc.dR<0.45
+            cut = tc.dR<0.4
             tcThisJet = tc[cut]
             
             A = tcThisJet.loc[tcThisJet.dR<0.1,'pT'].sum()
             B = tcThisJet.loc[(tcThisJet.dR>0.1) & (tcThisJet.dR<0.2),'pT'].sum()
             C = tcThisJet.loc[(tcThisJet.dR>0.2) & (tcThisJet.dR<0.4),'pT'].sum()
 
-            isoowen = (B-(3./12)*C)/(A-(1./12)*C)
+            A_en = tcThisJet.loc[tcThisJet.dR<0.1,'energy'].sum()
+            B_en = tcThisJet.loc[(tcThisJet.dR>0.1) & (tcThisJet.dR<0.2),'energy'].sum()
+            C_en = tcThisJet.loc[(tcThisJet.dR>0.2) & (tcThisJet.dR<0.4),'energy'].sum()
 
-            if skipFill: continue
-
-            h.genJetPtMatched.Fill(genjetVector[genMatch[i],0])
-            h.genVsClusterPt.Fill(genjetVector[genMatch[i],0], _jets[j].pt)
-            h.genVsClusterPt_puSub.Fill(genjetVector[genMatch[i],0], _jets[j].pt - C/.75)
-
-            h.jetPt.Fill(_jets[j].pt)
-            h.jetPt_puSub.Fill(_jets[j].pt - C/.75)
-
-            h.iso_PUsub_all.Fill(isoowen)
-            h.iso_noPUsub_all.Fill(B/A)
-
-            h.genPtVsClusterIso.Fill(genjetVector[genMatch[i],0],isoowen)
-            h.clusterPtVsClusterIso.Fill(_jets[j].pt,isoowen)
-
-            fill_hist(h.detadphiall   ,tcThisJet[['dEta','dPhi']].values,tcThisJet.pT.values)
-            fill_hist(h.dRgall        ,tcThisJet[['dR','energy']].values)
-            fill_hist(h.dRptall       ,tcThisJet[['dR','pT']].values)
-            fill_hist(h.tcpt          ,tcThisJet.pT.values)
-            fill_hist(h.tcenergy      ,tcThisJet.energy.values)
-            fill_hist(h.DRe           ,tcThisJet.dR.values,tcThisJet.pT.values)
-            fill_hist(h.DRp           ,tcThisJet.dR.values,tcThisJet.energy.values)
+            iso = (B-(3./12)*C)/(A-(1./12)*C)
             
-            if abs(_jets[j].eta)>1.5 and abs(_jets[j].eta)<1.9:
-                h.iso_PUsub_eta15.Fill(isoowen)
-                h.iso_noPUsub_eta15.Fill(B/A)
-                fill_hist(h.detadphieta15        ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
-                fill_hist(h.dReta15              ,tcThisJet[['dR','pT']].values)
+            output.jetPt[j] = jet.pt
+            output.jetEta[j] = jet.eta
+            output.jetPhi[j] = jet.phi
 
-            elif abs(_jets[j].eta)>1.9 and abs(_jets[j].eta)<2.3:
-                h.iso_PUsub_eta20.Fill(isoowen)
-                h.iso_noPUsub_eta20.Fill(B/A)
-                fill_hist(h.detadphieta20        ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
-                fill_hist(h.dReta20              ,tcThisJet[['dR','pT']].values)
+            output.jetPtR01[j] = A
+            output.jetPtR02[j] = B
+            output.jetPtR04[j] = C
 
-            elif abs(_jets[j].eta)>2.3 and abs(_jets[j].eta)<2.7:
-                h.iso_PUsub_eta25.Fill(isoowen)
-                h.iso_noPUsub_eta25.Fill(B/A)
-                fill_hist(h.detadphieta25        ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
-                fill_hist(h.dReta25              ,tcThisJet[['dR','pT']].values)
+            output.jetEnR01[j] = A_en
+            output.jetEnR02[j] = B_en
+            output.jetEnR04[j] = C_en
 
-            elif abs(_jets[j].eta)>2.7:
-                h.iso_PUsub_eta30.Fill(isoowen)
-                h.iso_noPUsub_eta30.Fill(B/A)
-                fill_hist(h.detadphieta30        ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
-                fill_hist(h.dReta30              ,tcThisJet[['dR','pT']].values)
-
-        if args.time:
-            print "    process Matched in", time.clock()-start
-                       
-        for j in unmatchedJets:
-            tc['dEta'] = tc['eta']-_jets[j].eta
-            tc['dPhi'] = tc['phi']-_jets[j].phi
-            tc['dR'] = (tc.dEta**2 + tc.dPhi**2)**0.5
-
-            cut = tc.dR<0.45
-            tcThisJet = tc[cut]
-
-            A = tcThisJet.loc[tcThisJet.dR<0.1,'pT'].sum()
-            B = tcThisJet.loc[(tcThisJet.dR>0.1) & (tcThisJet.dR<0.2),'pT'].sum()
-            C = tcThisJet.loc[(tcThisJet.dR>0.2) & (tcThisJet.dR<0.4),'pT'].sum()
-
-            isoowenpu = (B-(3./12)*C)/(A-(1./12)*C)
+            output.jetIso[j] = iso
 
 
-            if skipFill: continue
-
-            h.iso_PUsub_allpu.Fill(isoowenpu)
-            h.iso_noPUsub_allpu.Fill(B/A)
-
-            fill_hist(h.detadphiallpu ,tcThisJet[['dEta','dPhi']].values,tcThisJet.pT.values)
-            fill_hist(h.dRgallpu      ,tcThisJet[['dR','energy']].values)
-            fill_hist(h.dRptallpu     ,tcThisJet[['dR','pT']].values)
-            fill_hist(h.tcptpu        ,tcThisJet.pT.values)
-            fill_hist(h.tcenergypu    ,tcThisJet.energy.values)
-            fill_hist(h.DRepu         ,tcThisJet.dR.values,tcThisJet.pT.values)
-            fill_hist(h.DRppu         ,tcThisJet.dR.values,tcThisJet.energy.values)
-            
-            if abs(_jets[j].eta)>1.5 and abs(_jets[j].eta)<1.9:
-                h.iso_PUsub_eta15pu.Fill(isoowenpu)
-                h.iso_noPUsub_eta15pu.Fill(B/A)
-                fill_hist(h.detadphieta15pu      ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
-                fill_hist(h.dReta15pu            ,tcThisJet[['dR','pT']].values)
-                
-            elif abs(_jets[j].eta)>1.9 and abs(_jets[j].eta)<2.3:
-                h.iso_PUsub_eta20pu.Fill(isoowenpu)
-                h.iso_noPUsub_eta20pu.Fill(B/A)
-                fill_hist(h.detadphieta20pu      ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
-                fill_hist(h.dReta20pu            ,tcThisJet[['dR','pT']].values)
-
-            elif abs(_jets[j].eta)>2.3 and abs(_jets[j].eta)<2.7:
-                h.iso_PUsub_eta25pu.Fill(isoowenpu)
-                h.iso_noPUsub_eta25pu.Fill(B/A)
-                fill_hist(h.detadphieta25pu      ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
-                fill_hist(h.dReta25pu            ,tcThisJet[['dR','pT']].values)
-
-            elif abs(_jets[j].eta)>2.7:
-                h.iso_PUsub_eta30pu.Fill(isoowenpu)
-                h.iso_noPUsub_eta30pu.Fill(B/A)
-                fill_hist(h.detadphieta30pu      ,tcThisJet[['dEta','dPhi']].values, tcThisJet.pT.values)
-                fill_hist(h.dReta30pu            ,tcThisJet[['dR','pT']].values)
+        output.tree.Fill()
 
         if args.time:
             print "    process UnMatched in", time.clock()-start
 
-	nmatchedJets=nmatchedJets + len(matchedJets)
-	nunmatchedJets=nunmatchedJets + len(unmatchedJets)
-
-        h.jetCount.Fill(0,len(genjetVector))
-        h.jetCount.Fill(1,len(matchedJets))
-        h.jetCount.Fill(2,len(unmatchedJets))
 
         del tc
+        del genVector
         del genjetVector
+
         gc.collect()
 
         
@@ -441,46 +412,4 @@ for fName in fileList:
     sys.stdout.flush()
 
 
-print  '===nGenParticlesinHGCAL', nGenParticlesinHGCAL
-print  '===matchedjets', nmatchedJets
-print  '===unmatchedjets', nunmatchedJets
-
-nmatchedJets = max(nmatchedJets,1)
-nunmatchedJets = max(nunmatchedJets,1)
-
-if not skipFill:
-    h.dRgall.Scale(1.0/nmatchedJets)
-    h.dRptall.Scale(1.0/nmatchedJets)
-    h.iso_PUsub_all.Scale(1.0/nmatchedJets)
-    h.iso_noPUsub_all.Scale(1.0/nmatchedJets)
-    h.dReta15.Scale(1.0/nmatchedJets)
-    h.iso_PUsub_eta15.Scale(1.0/nmatchedJets)
-    h.iso_noPUsub_eta15.Scale(1.0/nmatchedJets)
-    h.dReta20.Scale(1.0/nmatchedJets)
-    h.iso_PUsub_eta20.Scale(1.0/nmatchedJets)
-    h.iso_noPUsub_eta20.Scale(1.0/nmatchedJets)
-    h.dReta25.Scale(1.0/nmatchedJets)
-    h.iso_PUsub_eta25.Scale(1.0/nmatchedJets)
-    h.iso_noPUsub_eta25.Scale(1.0/nmatchedJets)
-    h.dReta30.Scale(1.0/nmatchedJets)
-    h.iso_PUsub_eta30.Scale(1.0/nmatchedJets)
-    h.iso_noPUsub_eta30.Scale(1.0/nmatchedJets)
-    
-    h.dRgallpu.Scale(1.0/nunmatchedJets)
-    h.dRptallpu.Scale(1.0/nunmatchedJets)
-    h.iso_PUsub_allpu.Scale(1.0/nunmatchedJets)
-    h.iso_noPUsub_allpu.Scale(1.0/nunmatchedJets)
-    h.dReta15pu.Scale(1.0/nunmatchedJets)
-    h.iso_PUsub_eta15pu.Scale(1.0/nunmatchedJets)
-    h.iso_noPUsub_eta15pu.Scale(1.0/nunmatchedJets)
-    h.dReta20pu.Scale(1.0/nunmatchedJets)
-    h.iso_PUsub_eta20pu.Scale(1.0/nunmatchedJets)
-    h.iso_noPUsub_eta20pu.Scale(1.0/nunmatchedJets)
-    h.dReta25pu.Scale(1.0/nunmatchedJets)
-    h.iso_PUsub_eta25pu.Scale(1.0/nunmatchedJets)
-    h.iso_noPUsub_eta25pu.Scale(1.0/nunmatchedJets)
-    h.dReta30pu.Scale(1.0/nunmatchedJets)
-    h.iso_PUsub_eta30pu.Scale(1.0/nunmatchedJets)
-    h.iso_noPUsub_eta30pu.Scale(1.0/nunmatchedJets)
-    
-    h.hcalhisto.Write()
+output.outFile.Write()
