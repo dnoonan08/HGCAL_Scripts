@@ -65,8 +65,8 @@ nmatchedJets = 0
 nunmatchedJets = 0
 
 #timers
+import time
 if args.time:
-    import time
     start = time.clock()
 
 skipFill = False
@@ -153,12 +153,17 @@ totalN = 0
 # else:
 #     nFiles = args.NFiles
 
-for fName in fileList:
+for fName in fileList[6:]:
 
     if not args.N==-1 and (totalN > args.N):
         break
 
-    _tree = uproot.open(fName,xrootdsource=dict(chunkbytes=1024**3, limitbytes=1024**3))["hgcalTriggerNtuplizer/HGCalTriggerNtuple"]
+    print "File %s"%fName    
+    try:
+        _tree = uproot.open(fName,xrootdsource=dict(chunkbytes=1024**3, limitbytes=1024**3))["hgcalTriggerNtuplizer/HGCalTriggerNtuple"]
+    except:
+        print "---Unable to open file, skipping"
+        continue
 
     if args.N==-1:
         N = _tree.numentries
@@ -172,7 +177,6 @@ for fName in fileList:
             N = nRemaining
         totalN += _tree.numentries
 
-    print "File %s"%fName
 
     branches = ["tc_pt","tc_energy","tc_eta","tc_mipPt","tc_simenergy","tc_phi"]
     if args.superTC:
@@ -363,16 +367,12 @@ for fName in fileList:
             tc['dPhi'] = tc['phi']-jet.phi
             tc['dR'] = (tc.dEta**2 + tc.dPhi**2)**0.5
             
-            cut = tc.dR<0.4
+            cut = tc.dR<0.6
             tcThisJet = tc[cut]
             
             A = tcThisJet.loc[tcThisJet.dR<0.1,'pT'].sum()
             B = tcThisJet.loc[(tcThisJet.dR>0.1) & (tcThisJet.dR<0.2),'pT'].sum()
             C = tcThisJet.loc[(tcThisJet.dR>0.2) & (tcThisJet.dR<0.4),'pT'].sum()
-
-            A_en = tcThisJet.loc[tcThisJet.dR<0.1,'energy'].sum()
-            B_en = tcThisJet.loc[(tcThisJet.dR>0.1) & (tcThisJet.dR<0.2),'energy'].sum()
-            C_en = tcThisJet.loc[(tcThisJet.dR>0.2) & (tcThisJet.dR<0.4),'energy'].sum()
 
             iso = (B-(3./12)*C)/(A-(1./12)*C)
             
@@ -380,13 +380,19 @@ for fName in fileList:
             output.jetEta[j] = jet.eta
             output.jetPhi[j] = jet.phi
 
-            output.jetPtR01[j] = A
-            output.jetPtR02[j] = B
-            output.jetPtR04[j] = C
+            output.jetPtR01[j] = tcThisJet.loc[(tcThisJet.dR>=0.0) & (tcThisJet.dR<0.1),'pT'].sum()
+            output.jetPtR02[j] = tcThisJet.loc[(tcThisJet.dR>=0.1) & (tcThisJet.dR<0.2),'pT'].sum()
+            output.jetPtR03[j] = tcThisJet.loc[(tcThisJet.dR>=0.2) & (tcThisJet.dR<0.3),'pT'].sum()
+            output.jetPtR04[j] = tcThisJet.loc[(tcThisJet.dR>=0.3) & (tcThisJet.dR<0.4),'pT'].sum()
+            output.jetPtR05[j] = tcThisJet.loc[(tcThisJet.dR>=0.4) & (tcThisJet.dR<0.5),'pT'].sum()
+            output.jetPtR06[j] = tcThisJet.loc[(tcThisJet.dR>=0.5) & (tcThisJet.dR<0.6),'pT'].sum()
 
-            output.jetEnR01[j] = A_en
-            output.jetEnR02[j] = B_en
-            output.jetEnR04[j] = C_en
+            output.jetEnR01[j] = tcThisJet.loc[(tcThisJet.dR>=0.0) & (tcThisJet.dR<0.1),'energy'].sum()
+            output.jetEnR02[j] = tcThisJet.loc[(tcThisJet.dR>=0.1) & (tcThisJet.dR<0.2),'energy'].sum()
+            output.jetEnR03[j] = tcThisJet.loc[(tcThisJet.dR>=0.2) & (tcThisJet.dR<0.3),'energy'].sum()
+            output.jetEnR04[j] = tcThisJet.loc[(tcThisJet.dR>=0.3) & (tcThisJet.dR<0.4),'energy'].sum()
+            output.jetEnR05[j] = tcThisJet.loc[(tcThisJet.dR>=0.4) & (tcThisJet.dR<0.5),'energy'].sum()
+            output.jetEnR06[j] = tcThisJet.loc[(tcThisJet.dR>=0.5) & (tcThisJet.dR<0.6),'energy'].sum()
 
             output.jetIso[j] = iso
 
