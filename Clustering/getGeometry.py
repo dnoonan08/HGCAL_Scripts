@@ -38,6 +38,13 @@ def getSuperTCGeometry(geomVersion="V9", superTCMap=superTCMap2x2):
     superTCGeom = superTCGroup.mean()
     return superTCGeom
 
+def getSuperTCEqualShareGeometry(geomVersion="V9", superTCMap=superTCMap2x2):
+    geomDF = getTCGeometry(geomVersion=geomVersion)
+    geomDF.reset_index(inplace=True)
+    geomDF['tc_superTC'] = np.where(geomDF.tc_subdet==5,geomDF.tc_cell,geomDF['tc_cell'].map(superTCMap))
+    geomDF.set_index(['tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'],inplace=True)
+    return geomDF
+
 
 if __name__=="__main__":
     geomDF = getSuperTCGeometry("V8")

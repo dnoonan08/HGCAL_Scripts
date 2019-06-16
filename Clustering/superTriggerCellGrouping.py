@@ -1,8 +1,9 @@
 import numpy as np
+import pandas as pd
 from mapSuperTC import superTCMap2x2
-from getGeometry import getSuperTCGeometry
+from getGeometry import getSuperTCGeometry, getSuperTCEqualShareGeometry
 
-def superTCMerging(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi','tc_energy','tc_simenergy','tc_x','tc_y','tc_cell'], useMaxPtLocation=True, superTCMap = None, geomVersion="V9"):
+def superTCMerging(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi','tc_energy','tc_simenergy','tc_x','tc_y','tc_cell'], useMaxPtLocation=True,useMaxELocation=False, equalShare=False, superTCMap = None, geomVersion="V9"):
 
     fulldf["tc_superTC"] = np.where(fulldf.tc_subdet==5,fulldf.tc_cell,fulldf['tc_cell'].map(superTCMap))
 
@@ -10,7 +11,10 @@ def superTCMerging(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi','tc_energy
     superTCGroup = fulldf.reset_index().loc[:,columns].groupby(['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'])
 
 
-    if useMaxPtLocation:
+    if useMaxPtLocation or useMaxELocation:
+        val = 'tc_pt'
+        if useMaxELocation: val = 'tc_energy'
+
         fullDFmax = fulldf.reset_index().sort_values('tc_pt', ascending=False).drop_duplicates(['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'])
 
         fullDFmax.set_index(['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'],inplace=True)
@@ -28,6 +32,27 @@ def superTCMerging(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi','tc_energy
             superTC['tc_y'] = fullDFmax['tc_y']
         if 'tc_z' in mergedBranches:
             superTC['tc_z'] = fullDFmax['tc_z']
+
+    elif equalShare:
+        geomDF = getSuperTCEqualShareGeometry(geomVersion=geomVersion, superTCMap=superTCMap)
+
+        superTC = superTCGroup.sum()
+        superTC /= 4
+
+        superTCList = []
+        eventList = superTC.reset_index().entry.unique()
+        eventList.sort()
+        for e in eventList:
+            geomDF['tc_pt'] = superTC.loc[e].tc_pt
+            geomDF['tc_energy'] = superTC.loc[e].tc_energy
+            geomDF['tc_simenergy'] = superTC.loc[e].tc_simenergy
+            geomDF['entry'] = e
+            superTCList.append(geomDF.copy())
+
+        superTC = pd.concat(superTCList)            
+        superTC.reset_index(inplace=True)
+        superTC.set_index(['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'],inplace=True)
+        superTC.dropna(inplace=True)
 
     else:
         geomDF = getSuperTCGeometry(geomVersion=geomVersion, superTCMap=superTCMap)

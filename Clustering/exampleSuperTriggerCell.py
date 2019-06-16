@@ -24,7 +24,7 @@ fulldf = _tree.pandas.df(["tc_subdet","tc_zside","tc_layer","tc_wafer","tc_cell"
     
 fulldfGen = _tree.pandas.df(["gen_pt","gen_eta","gen_phi","gen_pdgid","gen_status"],entrystart=0, entrystop=N)
 
-fulldf = superTCMerging(fulldf, useMaxPtLocation=False, geomVersion="V9", superTCMap = superTCMap2x2)
+fulldf = superTCMerging(fulldf, useMaxPtLocation=False, equalShare=True, geomVersion="V9", superTCMap = superTCMap2x2)
 #fulldf = superTCMerging(fulldf, useMaxPtLocation=True, superTCMap = superTCMap2x2)
     
 
