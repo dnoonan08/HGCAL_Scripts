@@ -1,9 +1,11 @@
 *root
 *pkl
+*csv
 *pyc
 *pdf
 *~
 *tgz
 *jdl
 *sh
-Clustering/condor
+condor
+.ipynb_checkpoints
