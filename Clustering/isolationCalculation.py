@@ -241,15 +241,14 @@ for fName in fileList:
 
         genDF = fulldfGen.loc[i_event,['gen_pt','gen_eta','gen_phi','gen_status','gen_pdgid','gen_energy']]
         if args.vbf:
-            genDF = genDF[(genDF.gen_status==23) & (abs(genDF.gen_pdgid)<6) & (abs(genDF.gen_eta)>1.5) & (abs(genDF.gen_eta)<3.)]
+            genDF = genDF[(genDF.gen_status==23) & (abs(genDF.gen_pdgid)<6) & (abs(genDF.gen_eta)>1.2) & (abs(genDF.gen_eta)<3.3)]
         else:
-            genDF = genDF[((genDF.gen_status==1) | (genDF.gen_status==23)) & (abs(genDF.gen_pdgid)==args.pid) & (abs(genDF.gen_eta)>1.5) & (abs(genDF.gen_eta)<3.)]
+            genDF = genDF[((genDF.gen_status==1) | (genDF.gen_status==23)) & (abs(genDF.gen_pdgid)==args.pid) & (abs(genDF.gen_eta)>1.2) & (abs(genDF.gen_eta)<3.3)]
         
 
         genJetDF = fulldfGenJet.loc[i_event,['genjet_pt','genjet_eta','genjet_phi','genjet_energy']]
         genJetDF.columns = ['gen_pt','gen_eta','gen_phi','gen_energy']
-        genJetDF = genJetDF[(abs(genJetDF.gen_eta)>1.5) & (abs(genJetDF.gen_eta)<3.) & (genJetDF.gen_pt>10)]
-        # genJetDF = genJetDF[(abs(genJetDF.gen_eta)>1.8) & (abs(genJetDF.gen_eta)<2.7) & (genJetDF.gen_pt>10)]
+        genJetDF = genJetDF[(abs(genJetDF.gen_eta)>1.2) & (abs(genJetDF.gen_eta)<3.3) & (genJetDF.gen_pt>10)]
             
         output.nGen[0] = len(genDF)
         output.nGenJet[0] = len(genJetDF)
@@ -282,15 +281,6 @@ for fName in fileList:
             output.jetMinGenJetDR[j] = 99
 
 	genVector = genDF.values
-        if args.verbose:
-            print 'Gen Particles'
-            print genDF
-            print '------'
-
-        if args.verbose:
-            print 'Gen Jets Before Cleaning'
-            print genJetDF
-            print '------'
         #gen part to gen jet matching
         # remove gen jets which are not matched to a gen parton (within dR of at least 0.3)
         for k in range(len(genJetDF)-1,-1,-1):
@@ -302,6 +292,15 @@ for fName in fileList:
             if minDR>0.3:
                 genJetDF.drop(genJetDF.index.values[k],inplace=True)
         genjetVector = genJetDF.values
+
+
+        genDF = genDF[(abs(genDF.gen_eta)>1.8) & (abs(genDF.gen_eta)<2.7) & (genDF.gen_pt>10)]
+        genJetDF = genJetDF[(abs(genJetDF.gen_eta)>1.8) & (abs(genJetDF.gen_eta)<2.7) & (genJetDF.gen_pt>10)]
+
+        if args.verbose:
+            print 'Gen Particles'
+            print genDF
+            print '------'
 
         if args.verbose:
             print 'Gen Jets'
