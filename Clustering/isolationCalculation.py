@@ -1,4 +1,4 @@
-2###
+###
 # code based on simpleNewVBFreal.py from Uttiya Sarkar
 ###
 
@@ -103,11 +103,6 @@ if args.tcCut>-1:
 if args.simEnergyCut>-1:
     outputFileName = outputFileName.replace(".root","_simEnergy_gt_%i.root"%int(args.simEnergy))
 
-# if args.genjet:
-#     outputFileName = outputFileName.replace(".root","_matchToGenJets.root")
-# else:
-#     outputFileName = outputFileName.replace(".root","_matchToGenPart.root")
-
 if args.V8:
     outputFileName = outputFileName.replace(".root","_geomV8.root")
 
@@ -122,7 +117,7 @@ if not args.name=="":
 
 
 fileList = []
-
+# get list of files
 cmd = "xrdfs root://cmseos.fnal.gov ls %s"%eosDir
 dirContents,stderr = Popen(cmd,shell=True,stdout=PIPE,stderr=PIPE).communicate()
 dirContentsList = dirContents.split("\n")
@@ -153,7 +148,7 @@ totalN = 0
 # else:
 #     nFiles = args.NFiles
 
-for fName in fileList[6:]:
+for fName in fileList:
 
     if not args.N==-1 and (totalN > args.N):
         break
@@ -204,10 +199,7 @@ for fName in fileList[6:]:
 
     fulldf = fulldf[(fulldf.tc_mipPt > args.tcCut) & (fulldf.tc_simenergy > args.simEnergyCut)]
     gc.collect()
-    # if args.tcCut>-1:
-    #     fulldf = fulldf[fulldf.tc_mipPt > args.tcCut]
-    # if args.simEnergyCut>-1:
-    #     fulldf = fulldf[fulldf.tc_simenergy > args.simEnergyCut]
+
     fulldfGen = _tree.pandas.df(["gen_pt","gen_eta","gen_phi","gen_status","gen_pdgid","gen_energy"],entrystart=0,entrystop=N)
     fulldfGenJet = _tree.pandas.df(["genjet_pt","genjet_eta","genjet_phi","genjet_energy"],entrystart=0,entrystop=N)
 
@@ -252,11 +244,12 @@ for fName in fileList[6:]:
             genDF = genDF[(genDF.gen_status==23) & (abs(genDF.gen_pdgid)<6) & (abs(genDF.gen_eta)>1.5) & (abs(genDF.gen_eta)<3.)]
         else:
             genDF = genDF[((genDF.gen_status==1) | (genDF.gen_status==23)) & (abs(genDF.gen_pdgid)==args.pid) & (abs(genDF.gen_eta)>1.5) & (abs(genDF.gen_eta)<3.)]
-
+        
 
         genJetDF = fulldfGenJet.loc[i_event,['genjet_pt','genjet_eta','genjet_phi','genjet_energy']]
         genJetDF.columns = ['gen_pt','gen_eta','gen_phi','gen_energy']
         genJetDF = genJetDF[(abs(genJetDF.gen_eta)>1.5) & (abs(genJetDF.gen_eta)<3.) & (genJetDF.gen_pt>10)]
+        # genJetDF = genJetDF[(abs(genJetDF.gen_eta)>1.8) & (abs(genJetDF.gen_eta)<2.7) & (genJetDF.gen_pt>10)]
             
         output.nGen[0] = len(genDF)
         output.nGenJet[0] = len(genJetDF)
@@ -279,10 +272,8 @@ for fName in fileList[6:]:
 
 
         isGenJetMatched=[]
+        isGenPartMatched=[]
         genjetVector = genJetDF.values
-
-        if args.verbose:
-            print 'Gen Jets'
 
         for j in range(len(_jets)):
             output.jetGenMatch[j] = -1
@@ -290,12 +281,50 @@ for fName in fileList[6:]:
             output.jetMinGenDR[j] = 99
             output.jetMinGenJetDR[j] = 99
 
+	genVector = genDF.values
+        if args.verbose:
+            print 'Gen Particles'
+            print genDF
+            print '------'
+
+        if args.verbose:
+            print 'Gen Jets Before Cleaning'
+            print genJetDF
+            print '------'
+        #gen part to gen jet matching
+        # remove gen jets which are not matched to a gen parton (within dR of at least 0.3)
+        for k in range(len(genJetDF)-1,-1,-1):
+            minDR = 999
+            for i in range(len(genVector)):
+                dR_gen_genjet=((genjetVector[k,1]-genVector[i,1])**2+(genjetVector[k,2]-genVector[i,2])**2)**0.5
+                if dR_gen_genjet < minDR:
+                    minDR = dR_gen_genjet
+            if minDR>0.3:
+                genJetDF.drop(genJetDF.index.values[k],inplace=True)
+        genjetVector = genJetDF.values
+
+        if args.verbose:
+            print 'Gen Jets'
+            print genJetDF
+            print '------'
+
+
+
+        if args.verbose:
+            print 'Reco FastJets'
+            for jet in _jets:
+                print '   ', jet
+            print '------'
+
+        #print genjetVector
+        if args.verbose:
+            print 'Jet/GenJet Matching'
 
         for i in range(len(genjetVector)):
             foundMatch = False
+
             if args.verbose:
                 print genjetVector[i][:4]
-
             for j,jet in enumerate(_jets):
                  dR_jet_genjet=((jet.eta-genjetVector[i,1])**2+(jet.phi-genjetVector[i,2])**2)**0.5
 
@@ -308,6 +337,8 @@ for fName in fileList[6:]:
                  if dR_jet_genjet<0.1:
                      output.jetGenJetMatch[j] = i
                      foundMatch = True
+                     if args.verbose:
+                         print 'Match'
                      break   
 
             isGenJetMatched.append(foundMatch)
@@ -316,11 +347,14 @@ for fName in fileList[6:]:
                     print "No Match Found"
 
         isGenMatched = []
+         
 
-        genVector = genDF.values
+#        genVector = genDF.values
+#        if args.verbose:
+#            print 'Gen Particles'
+
         if args.verbose:
-            print 'Gen Particles'
-
+            print 'Jet/GenPart Matching'
         for i in range(len(genVector)):
             foundMatch = False
             if args.verbose:
@@ -353,10 +387,11 @@ for fName in fileList[6:]:
 
         if args.draw:
             figureName = "Plots/JetAreas_%s"%(outputFileName.replace(".root","_%i.pdf"%i_event))
-            if args.genjet:
-                drawJets.drawJets(jets = _jets,name = figureName ,genjet_pt = genjetDF.gen_pt.values, genjet_eta = genjetDF.gen_eta.values, genjet_phi = genjetDF.gen_phi.values, genjet_matched=isGenJetMatched)
-            else:
-                drawJets.drawJets(jets = _jets,name = figureName ,genjet_pt = genDF.gen_pt.values, genjet_eta = genDF.gen_eta.values, genjet_phi = genDF.gen_phi.values, genjet_pid = genDF.gen_pdgid.values, genjet_matched=isGenMatched)
+            drawJets.drawJets(jets = _jets,name = figureName ,genjet = genJetDF, genjet_matched=isGenJetMatched,genpart = genDF, genpart_matched=isGenMatched)
+            # if args.genjet:
+            #     drawJets.drawJets(jets = _jets,name = figureName ,genjet_pt = genjetDF.gen_pt.values, genjet_eta = genjetDF.gen_eta.values, genjet_phi = genjetDF.gen_phi.values, genjet_matched=isGenJetMatched)
+            # else:
+            #     drawJets.drawJets(jets = _jets,name = figureName ,genjet_pt = genDF.gen_pt.values, genjet_eta = genDF.gen_eta.values, genjet_phi = genDF.gen_phi.values, genjet_pid = genDF.gen_pdgid.values, genjet_matched=isGenMatched)
 
 
         output.nJet[0] = len(_jets)
