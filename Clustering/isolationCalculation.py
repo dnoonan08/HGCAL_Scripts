@@ -97,7 +97,6 @@ else:
 
 
 if args.tcCut>-1:
-    print "HERE"
     outputFileName = outputFileName.replace(".root","_tcMipPt_gt_%i.root"%int(args.tcCut))
 
 if args.simEnergyCut>-1:
@@ -148,9 +147,12 @@ totalN = 0
 # else:
 #     nFiles = args.NFiles
 
+totalGen = 0
+totalGenJet = 0
+
 for fName in fileList:
 
-    if not args.N==-1 and (totalN > args.N):
+    if not args.N==-1 and (totalN >= args.N):
         break
 
     print "File %s"%fName    
@@ -159,7 +161,6 @@ for fName in fileList:
     except:
         print "---Unable to open file, skipping"
         continue
-
     if args.N==-1:
         N = _tree.numentries
     else:
@@ -196,9 +197,8 @@ for fName in fileList:
         fulldf = superTCMerging(fulldf, mergedBranches=['tc_pt','tc_energy','tc_eta','tc_phi','tc_mipPt','tc_simenergy'], useMaxPtLocation=useMaxPtLocation, geomVersion=geomVersion, superTCMap = superTCMap)
 
 
-
-    fulldf = fulldf[(fulldf.tc_mipPt > args.tcCut) & (fulldf.tc_simenergy > args.simEnergyCut)]
-    gc.collect()
+    # fulldf = fulldf[(fulldf.tc_mipPt > args.tcCut) & (fulldf.tc_simenergy > args.simEnergyCut)]
+    # gc.collect()
 
     fulldfGen = _tree.pandas.df(["gen_pt","gen_eta","gen_phi","gen_status","gen_pdgid","gen_energy"],entrystart=0,entrystop=N)
     fulldfGenJet = _tree.pandas.df(["genjet_pt","genjet_eta","genjet_phi","genjet_energy"],entrystart=0,entrystop=N)
@@ -218,6 +218,83 @@ for fName in fileList:
             start = time.clock()
             print '-'*20
             print "     %i"%i_event   
+
+        genDF = fulldfGen.loc[i_event,['gen_pt','gen_eta','gen_phi','gen_status','gen_pdgid','gen_energy']]
+        if args.vbf:
+            genDF = genDF[(genDF.gen_status==23) & (abs(genDF.gen_pdgid)<6) & (abs(genDF.gen_eta)>1.5) & (abs(genDF.gen_eta)<3.)]
+        else:
+            genDF = genDF[((genDF.gen_status==1) | (genDF.gen_status==23)) & (abs(genDF.gen_pdgid)==args.pid) & (abs(genDF.gen_eta)>1.5) & (abs(genDF.gen_eta)<3.)]
+        
+
+        genJetDF = fulldfGenJet.loc[i_event,['genjet_pt','genjet_eta','genjet_phi','genjet_energy']]
+        genJetDF.columns = ['gen_pt','gen_eta','gen_phi','gen_energy']
+        genJetDF = genJetDF[(genJetDF.gen_energy>(0.5*genDF.gen_energy.min()))]
+
+            
+        if args.time:
+            print "    Got Gen in", time.clock()-start
+
+
+        genJetDF['matched']=False
+        for k in range(len(genDF)):
+            genJetDF['dR'] = ((genJetDF.gen_phi-genDF.iloc[k].gen_phi)**2+(genJetDF.gen_eta-genDF.iloc[k].gen_eta)**2)**0.5
+            genJetDF['dPt'] = abs(genJetDF.gen_pt-genDF.iloc[k].gen_pt)/genDF.iloc[k].gen_pt
+            genJetDF.loc[genJetDF.dPt>0.5,'dR'] = 999
+        
+            if genJetDF.dR.min()<0.3:
+                genJetDF.loc[genJetDF.dR.idxmin(),'matched']=True
+
+        genJetDF = genJetDF[genJetDF.matched][['gen_pt','gen_eta','gen_phi','gen_energy']]
+#        genjetVector = genJetDF.values
+
+        # #gen part to gen jet matching
+        # # remove gen jets which are not matched to a gen parton (within dR of at least 0.3)
+        # for k in range(len(genJetDF)-1,-1,-1):
+        #     minDR = 999
+        #     for i in range(len(genVector)):
+        #         dR_gen_genjet=((genjetVector[k,1]-genVector[i,1])**2+(genjetVector[k,2]-genVector[i,2])**2)**0.5
+        #         if dR_gen_genjet < minDR:
+        #             minDR = dR_gen_genjet
+        #     if minDR>0.3:
+        #         genJetDF.drop(genJetDF.index.values[k],inplace=True)
+        # genjetVector = genJetDF.values
+
+
+        # genDF = genDF[(abs(genDF.gen_eta)>1.8) & (abs(genDF.gen_eta)<2.7) & (genDF.gen_pt>10)]
+        # genJetDF = genJetDF[(abs(genJetDF.gen_eta)>1.8) & (abs(genJetDF.gen_eta)<2.7) & (genJetDF.gen_pt>10)]
+
+
+        output.nGen[0] = len(genDF)
+        for i in range(output.nGen[0]):
+            output.genPt[i] = genDF.gen_pt.values[i]
+            output.genEta[i] = genDF.gen_eta.values[i]
+            output.genPhi[i] = genDF.gen_phi.values[i]
+            output.genEn[i] = genDF.gen_energy.values[i]
+            output.genPID[i] = genDF.gen_pdgid.values[i]
+
+        output.nGenJet[0] = len(genJetDF)
+        for i in range(output.nGenJet[0]):
+            output.genJetPt[i] = genJetDF.gen_pt.values[i]
+            output.genJetEta[i] = genJetDF.gen_eta.values[i]
+            output.genJetPhi[i] = genJetDF.gen_phi.values[i]
+            output.genJetEn[i] = genJetDF.gen_energy.values[i]
+
+
+
+
+        if args.verbose:
+            print 'Gen Particles'
+            print genDF
+            print '------'
+
+        if args.verbose:
+            print 'Gen Jets'
+            print genJetDF
+            print '------'
+
+        totalGen += len(genDF)
+        totalGenJet += len(genJetDF)
+
 
         # load into dictionary for creating pandas df
         tc = fulldf.loc[i_event,['tc_pt','tc_eta','tc_phi','tc_energy']]
@@ -239,75 +316,6 @@ for fName in fileList:
         del clusterVals
         gc.collect()
 
-        genDF = fulldfGen.loc[i_event,['gen_pt','gen_eta','gen_phi','gen_status','gen_pdgid','gen_energy']]
-        if args.vbf:
-            genDF = genDF[(genDF.gen_status==23) & (abs(genDF.gen_pdgid)<6) & (abs(genDF.gen_eta)>1.2) & (abs(genDF.gen_eta)<3.3)]
-        else:
-            genDF = genDF[((genDF.gen_status==1) | (genDF.gen_status==23)) & (abs(genDF.gen_pdgid)==args.pid) & (abs(genDF.gen_eta)>1.2) & (abs(genDF.gen_eta)<3.3)]
-        
-
-        genJetDF = fulldfGenJet.loc[i_event,['genjet_pt','genjet_eta','genjet_phi','genjet_energy']]
-        genJetDF.columns = ['gen_pt','gen_eta','gen_phi','gen_energy']
-        genJetDF = genJetDF[(abs(genJetDF.gen_eta)>1.2) & (abs(genJetDF.gen_eta)<3.3) & (genJetDF.gen_pt>10)]
-            
-        output.nGen[0] = len(genDF)
-        output.nGenJet[0] = len(genJetDF)
-        for i in range(output.nGen[0]):
-            output.genPt[i] = genDF.gen_pt.values[i]
-            output.genEta[i] = genDF.gen_eta.values[i]
-            output.genPhi[i] = genDF.gen_phi.values[i]
-            output.genEn[i] = genDF.gen_energy.values[i]
-            output.genPID[i] = genDF.gen_pdgid.values[i]
-
-        for i in range(output.nGenJet[0]):
-            output.genJetPt[i] = genJetDF.gen_pt.values[i]
-            output.genJetEta[i] = genJetDF.gen_eta.values[i]
-            output.genJetPhi[i] = genJetDF.gen_phi.values[i]
-            output.genJetEn[i] = genJetDF.gen_energy.values[i]
-
-
-        if args.time:
-            print "    Got Gen in", time.clock()-start
-
-
-        isGenJetMatched=[]
-        isGenPartMatched=[]
-        genjetVector = genJetDF.values
-
-        for j in range(len(_jets)):
-            output.jetGenMatch[j] = -1
-            output.jetGenJetMatch[j] = -1
-            output.jetMinGenDR[j] = 99
-            output.jetMinGenJetDR[j] = 99
-
-	genVector = genDF.values
-        #gen part to gen jet matching
-        # remove gen jets which are not matched to a gen parton (within dR of at least 0.3)
-        for k in range(len(genJetDF)-1,-1,-1):
-            minDR = 999
-            for i in range(len(genVector)):
-                dR_gen_genjet=((genjetVector[k,1]-genVector[i,1])**2+(genjetVector[k,2]-genVector[i,2])**2)**0.5
-                if dR_gen_genjet < minDR:
-                    minDR = dR_gen_genjet
-            if minDR>0.3:
-                genJetDF.drop(genJetDF.index.values[k],inplace=True)
-        genjetVector = genJetDF.values
-
-
-        genDF = genDF[(abs(genDF.gen_eta)>1.8) & (abs(genDF.gen_eta)<2.7) & (genDF.gen_pt>10)]
-        genJetDF = genJetDF[(abs(genJetDF.gen_eta)>1.8) & (abs(genJetDF.gen_eta)<2.7) & (genJetDF.gen_pt>10)]
-
-        if args.verbose:
-            print 'Gen Particles'
-            print genDF
-            print '------'
-
-        if args.verbose:
-            print 'Gen Jets'
-            print genJetDF
-            print '------'
-
-
 
         if args.verbose:
             print 'Reco FastJets'
@@ -315,17 +323,30 @@ for fName in fileList:
                 print '   ', jet
             print '------'
 
+        isGenJetMatched=[]
+        isGenPartMatched=[]
+#        genjetVector = genJetDF.values
+
+        for j in range(len(_jets)):
+            output.jetGenMatch[j] = -1
+            output.jetGenJetMatch[j] = -1
+            output.jetMinGenDR[j] = 99
+            output.jetMinGenJetDR[j] = 99
+
         #print genjetVector
         if args.verbose:
             print 'Jet/GenJet Matching'
 
-        for i in range(len(genjetVector)):
+#        for i in range(len(genjetVector)):
+        for i in range(len(genJetDF)): 
             foundMatch = False
 
             if args.verbose:
-                print genjetVector[i][:4]
+                print genJetDF.iloc[i]
+                # print genjetVector[i][:4]
             for j,jet in enumerate(_jets):
-                 dR_jet_genjet=((jet.eta-genjetVector[i,1])**2+(jet.phi-genjetVector[i,2])**2)**0.5
+                 dR_jet_genjet=((jet.eta-genJetDF.iloc[i].gen_eta)**2+(jet.phi-genJetDF.iloc[i].gen_phi)**2)**0.5
+                 # dR_jet_genjet=((jet.eta-genjetVector[i,1])**2+(jet.phi-genjetVector[i,2])**2)**0.5
 
                  if dR_jet_genjet < output.jetMinGenJetDR[j]:
                      output.jetMinGenJetDR[j] = dR_jet_genjet
@@ -349,18 +370,20 @@ for fName in fileList:
          
 
 #        genVector = genDF.values
-#        if args.verbose:
-#            print 'Gen Particles'
+        if args.verbose:
+            print 'Gen Particles'
 
         if args.verbose:
             print 'Jet/GenPart Matching'
-        for i in range(len(genVector)):
+        for i in range(len(genDF)):
+        # for i in range(len(genVector)):
             foundMatch = False
             if args.verbose:
-                print genVector[i][:4]
+                print genDF.iloc[i]
+                # print genVector[i][:4]
 
             for j,jet in enumerate(_jets):
-                 dR_jet_gen=((jet.eta-genVector[i,1])**2+(jet.phi-genVector[i,2])**2)**0.5
+                 dR_jet_gen=((jet.eta-genDF.iloc[i].gen_eta)**2+(jet.phi-genDF.iloc[i].gen_phi)**2)**0.5
 
                  if dR_jet_gen < output.jetMinGenDR[j]:
                      output.jetMinGenDR[j] = dR_jet_gen
@@ -438,14 +461,14 @@ for fName in fileList:
 
 
         del tc
-        del genVector
-        del genjetVector
+        # del genVector
+#        del genjetVector
 
         gc.collect()
 
         
     
-    del fulldf
+    # del fulldf
     del fulldfGen
     gc.collect()
 
@@ -453,3 +476,5 @@ for fName in fileList:
 
 
 output.outFile.Write()
+print(1.*totalGenJet/totalGen)
+print(totalGenJet,'/',totalGen)
