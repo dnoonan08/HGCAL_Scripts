@@ -15,6 +15,17 @@ class IsoOutputTree():
         self.genPhi = array('f',maxN*[0.])
         self.genEn  = array('f',maxN*[0.])
         self.genPID = array('i',maxN*[0])
+        self.genMinDR  = array('f',maxN*[0.])
+        self.genMinDPt  = array('f',maxN*[0.])
+        self.genMinDEn  = array('f',maxN*[0.])
+
+        self.nGen_Initial = array('i',[0])
+        self.genPt_Initial  = array('f',maxN*[0.])
+        self.genEta_Initial = array('f',maxN*[0.])
+        self.genPhi_Initial = array('f',maxN*[0.])
+        self.genEn_Initial  = array('f',maxN*[0.])
+        self.genPID_Initial = array('i',maxN*[0])
+
         self.nGenJet = array('i',[0])
         self.genJetPt  = array('f',maxN*[0.])
         self.genJetEta = array('f',maxN*[0.])
@@ -53,6 +64,17 @@ class IsoOutputTree():
         self.tree.Branch('genPhi',self.genPhi,'genPhi[nGen]/F')
         self.tree.Branch('genEn',self.genEn,'genEn[nGen]/F')
         self.tree.Branch('genPID',self.genPID,'genPID[nGen]/I')
+        self.tree.Branch('genMinDR',self.genMinDR,'genMinDR[nGen]/F')
+        self.tree.Branch('genMinDPt',self.genMinDPt,'genMinDPt[nGen]/F')
+        self.tree.Branch('genMinDEn',self.genMinDEn,'genMinDEn[nGen]/F')
+
+
+        self.tree.Branch('nGen_Initial',self.nGen_Initial,'nGen_Initial/I')
+        self.tree.Branch('genPt_Initial',self.genPt_Initial,'genPt_Initial[nGen]/F')
+        self.tree.Branch('genEta_Initial',self.genEta_Initial,'genEta_Initial[nGen]/F')
+        self.tree.Branch('genPhi_Initial',self.genPhi_Initial,'genPhi_Initial[nGen]/F')
+        self.tree.Branch('genEn_Initial',self.genEn_Initial,'genEn_Initial[nGen]/F')
+        self.tree.Branch('genPID_Initial',self.genPID_Initial,'genPID_Initial[nGen]/I')
 
 
         self.tree.Branch('nGenJet',self.nGenJet,'nGenJet/I')

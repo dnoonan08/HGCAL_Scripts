@@ -200,7 +200,8 @@ for fName in fileList:
     # fulldf = fulldf[(fulldf.tc_mipPt > args.tcCut) & (fulldf.tc_simenergy > args.simEnergyCut)]
     # gc.collect()
 
-    fulldfGen = _tree.pandas.df(["gen_pt","gen_eta","gen_phi","gen_status","gen_pdgid","gen_energy"],entrystart=0,entrystop=N)
+    fulldfGen = _tree.pandas.df(["gen_pt","gen_eta","gen_phi","gen_status","gen_pdgid","gen_energy","gen_daughters"],entrystart=0,entrystop=N)
+    # fulldfGen = _tree.pandas.df(["gen_pt","gen_eta","gen_phi","gen_status","gen_pdgid","gen_energy"],entrystart=0,entrystop=N)
     fulldfGenJet = _tree.pandas.df(["genjet_pt","genjet_eta","genjet_phi","genjet_energy"],entrystart=0,entrystop=N)
 
     del _tree
@@ -219,12 +220,34 @@ for fName in fileList:
             print '-'*20
             print "     %i"%i_event   
 
-        genDF = fulldfGen.loc[i_event,['gen_pt','gen_eta','gen_phi','gen_status','gen_pdgid','gen_energy']]
+        genDF = fulldfGen.loc[i_event]
+        genDF.gen_daughters = genDF.gen_daughters[0]
+
+        # genDF = fulldfGen.loc[i_event,['gen_pt','gen_eta','gen_phi','gen_status','gen_pdgid','gen_energy']]
+
         if args.vbf:
-            genDF = genDF[(genDF.gen_status==23) & (abs(genDF.gen_pdgid)<6) & (abs(genDF.gen_eta)>1.5) & (abs(genDF.gen_eta)<3.)]
+            genDFStart = genDF[(genDF.gen_status==23) & (abs(genDF.gen_pdgid)<6)]
         else:
-            genDF = genDF[((genDF.gen_status==1) | (genDF.gen_status==23)) & (abs(genDF.gen_pdgid)==args.pid) & (abs(genDF.gen_eta)>1.5) & (abs(genDF.gen_eta)<3.)]
-        
+            genDFStart = genDF[((genDF.gen_status==1) | (genDF.gen_status==23)) & (abs(genDF.gen_pdgid)==args.pid) & (abs(genDF.gen_eta)>1.5) & (abs(genDF.gen_eta)<3.)]
+
+        ### look through daughters fo the parton to find last copy (last parton in decay chain with same pdgid)
+        finalIdxList = []
+        for i in range(len(genDFStart)):
+            daughterList = genDFStart.gen_daughters.iloc[i]
+            finalIdx = i
+            pdgID = genDFStart.gen_pdgid.iloc[i]
+             
+            while pdgID==genDF.gen_pdgid.iloc[daughterList[0]]:
+                #idxList.append(daughterList[0])
+                finalIdx = daughterList[0]
+                daughterList = genDF.loc[daughterList[0]].gen_daughters            
+
+            finalIdxList.append(finalIdx)            
+
+        ## select only final parton from each VBF parton, and only if in HGCAL
+
+        genDF = genDF.loc[finalIdxList]
+        genDF = genDF[ (abs(genDF.gen_eta)>1.5) & (abs(genDF.gen_eta)<3.) ]
 
         genJetDF = fulldfGenJet.loc[i_event,['genjet_pt','genjet_eta','genjet_phi','genjet_energy']]
         genJetDF.columns = ['gen_pt','gen_eta','gen_phi','gen_energy']
@@ -236,41 +259,50 @@ for fName in fileList:
 
 
         genJetDF['matched']=False
+        genDF['minDR_genJet'] = 99.
+        genDF['minDEn_genJet'] = 99.
+        genDF['minDPt_genJet'] = 99.
+
         for k in range(len(genDF)):
-            genJetDF['dR'] = ((genJetDF.gen_phi-genDF.iloc[k].gen_phi)**2+(genJetDF.gen_eta-genDF.iloc[k].gen_eta)**2)**0.5
+            genJetDF['dR'] = (( abs(abs(genJetDF.gen_phi-genDF.iloc[k].gen_phi)-np.pi)-np.pi )**2+(genJetDF.gen_eta-genDF.iloc[k].gen_eta)**2)**0.5
+            genJetDF['dEn'] = abs(genJetDF.gen_energy-genDF.iloc[k].gen_energy)/genDF.iloc[k].gen_energy
             genJetDF['dPt'] = abs(genJetDF.gen_pt-genDF.iloc[k].gen_pt)/genDF.iloc[k].gen_pt
-            genJetDF.loc[genJetDF.dPt>0.5,'dR'] = 999
+#            genJetDF.loc[genJetDF.dPt>0.5,'dR'] = 999
         
             if genJetDF.dR.min()<0.3:
                 genJetDF.loc[genJetDF.dR.idxmin(),'matched']=True
+            ik = genDF.iloc[k].name
+            genDF.loc[ik,'minDR_genJet'] = genJetDF.dR.min()
+            genDF.loc[ik,'minDPt_genJet'] = genJetDF.loc[genJetDF.dR.idxmin()].dPt
+            genDF.loc[ik,'minDEn_genJet'] = genJetDF.loc[genJetDF.dR.idxmin()].dEn
+
 
         genJetDF = genJetDF[genJetDF.matched][['gen_pt','gen_eta','gen_phi','gen_energy']]
-#        genjetVector = genJetDF.values
-
-        # #gen part to gen jet matching
-        # # remove gen jets which are not matched to a gen parton (within dR of at least 0.3)
-        # for k in range(len(genJetDF)-1,-1,-1):
-        #     minDR = 999
-        #     for i in range(len(genVector)):
-        #         dR_gen_genjet=((genjetVector[k,1]-genVector[i,1])**2+(genjetVector[k,2]-genVector[i,2])**2)**0.5
-        #         if dR_gen_genjet < minDR:
-        #             minDR = dR_gen_genjet
-        #     if minDR>0.3:
-        #         genJetDF.drop(genJetDF.index.values[k],inplace=True)
-        # genjetVector = genJetDF.values
-
-
-        # genDF = genDF[(abs(genDF.gen_eta)>1.8) & (abs(genDF.gen_eta)<2.7) & (genDF.gen_pt>10)]
-        # genJetDF = genJetDF[(abs(genJetDF.gen_eta)>1.8) & (abs(genJetDF.gen_eta)<2.7) & (genJetDF.gen_pt>10)]
 
 
         output.nGen[0] = len(genDF)
+        print genDF
         for i in range(output.nGen[0]):
             output.genPt[i] = genDF.gen_pt.values[i]
             output.genEta[i] = genDF.gen_eta.values[i]
             output.genPhi[i] = genDF.gen_phi.values[i]
             output.genEn[i] = genDF.gen_energy.values[i]
             output.genPID[i] = genDF.gen_pdgid.values[i]
+            output.genMinDR[i] = genDF.minDR_genJet.values[i]
+            output.genMinDPt[i] = genDF.minDPt_genJet.values[i]
+            output.genMinDEn[i] = genDF.minDEn_genJet.values[i]
+
+
+        output.nGen_Initial[0] = len(genDFStart)
+        for i in range(output.nGen_Initial[0]):
+            output.genPt_Initial[i] = genDFStart.gen_pt.values[i]
+            output.genEta_Initial[i] = genDFStart.gen_eta.values[i]
+            output.genPhi_Initial[i] = genDFStart.gen_phi.values[i]
+            output.genEn_Initial[i] = genDFStart.gen_energy.values[i]
+            output.genPID_Initial[i] = genDFStart.gen_pdgid.values[i]
+
+
+
 
         output.nGenJet[0] = len(genJetDF)
         for i in range(output.nGenJet[0]):
@@ -383,7 +415,7 @@ for fName in fileList:
                 # print genVector[i][:4]
 
             for j,jet in enumerate(_jets):
-                 dR_jet_gen=((jet.eta-genDF.iloc[i].gen_eta)**2+(jet.phi-genDF.iloc[i].gen_phi)**2)**0.5
+                 dR_jet_gen=((jet.eta-genDF.iloc[i].gen_eta)**2+(abs(abs(jet.phi-genDF.iloc[i].gen_phi)-np.pi)-np.pi)**2)**0.5
 
                  if dR_jet_gen < output.jetMinGenDR[j]:
                      output.jetMinGenDR[j] = dR_jet_gen
@@ -421,7 +453,7 @@ for fName in fileList:
         for j,jet in enumerate(_jets):
 
             tc['dEta'] = tc['eta']-jet.eta
-            tc['dPhi'] = tc['phi']-jet.phi
+            tc['dPhi'] = abs(abs(abs(tc['phi']-jet.phi)-np.pi)-np.pi)
             tc['dR'] = (tc.dEta**2 + tc.dPhi**2)**0.5
             
             cut = tc.dR<0.6
