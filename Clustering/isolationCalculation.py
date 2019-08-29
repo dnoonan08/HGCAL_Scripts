@@ -6,6 +6,7 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--vbf',help='Run on VBF samples', action='store_true')
+parser.add_argument('--minbias',help='Run on minbias samples', action='store_true')
 parser.add_argument('--particlegun','--pgun',help='Run on Particle Gun samples', action='store_true',dest='particlegun')
 parser.add_argument('--pid', default=1, type=int)
 parser.add_argument('--pu', default=0, type=int)
@@ -31,13 +32,13 @@ parser.add_argument('--superTCCenter',action='store_true',help='Use super trigge
 
 args = parser.parse_args()
 
-print args
+print (args)
 
 if args.draw:
     import drawJets
 
-if not (args.vbf or args.particlegun):
-    print "Specify vbf or particle gun"
+if not (args.vbf or args.particlegun or args.minbias):
+    print ("Specify vbf or particle gun")
     exit()
 
 import sys
@@ -46,8 +47,8 @@ import numpy as np
 #import pandas as pd
 from root_numpy import fill_hist
 
-print "Using uproot version:",uproot.__version__
-print "uproot path location:",uproot.__file__
+print ("Using uproot version:",uproot.__version__)
+print ("uproot path location:",uproot.__file__)
 
 import gc
 
@@ -57,7 +58,7 @@ from pyjet import cluster,DTYPE_EP,DTYPE_PTEPM
 #import histvbf as h
 #from histIso import *
 
-print "Starting"
+print ("Starting")
 
 #count number of gen particles, matched, and unmatched jets
 nGenParticlesinHGCAL = 0
@@ -76,28 +77,33 @@ fileName = ""
 
 if args.V8:
     if args.particlegun:
-        eosDir = "/store/user/dnoonan/HGCAL_Concentrator/L1THGCal_Ntuples/Particle_Gun/"
+        eosDir = "/store/user/dnoonan/HGCAL_Concentrator/L1THGCal_Ntuples/"
         if args.pid==11:
             eosDir = "/store/user/dnoonan/HGCAL_Concentrator/L1THGCal_Ntuples/Electron_Particle_Gun/"
         fileNameContent = "ntuple_etaphiTower_pid%i_pt%i_eta15-30_%iPU"%(args.pid, args.pt, args.pu)
-        outputFileName = "particleGun_pid%i_pt%i_eta15-30_%iPU.root"%(args.pid, args.pt, args.pu)
+        outputFileName = "fastJetClustering_particleGun_pid%i_pt%i_eta15-30_%iPU.root"%(args.pid, args.pt, args.pu)
 
     if args.vbf:
         eosDir = "/store/user/dnoonan/HGCAL_Concentrator/L1THGCal_Ntuples/VBF_Samples/"
         fileNameContent = "ntuple_hgcalNtuples_vbf_hmm_%iPU"%(args.pu)
-        outputFileName = "VBF_%iPU.root"%(args.pu)
+        outputFileName = "fastJetClustering_VBF_%iPU.root"%(args.pu)
 else:
-    eosDir = "/store/user/dnoonan/HGCAL_Concentrator/L1THGCal_Ntuples/Electron_Particle_Gun_V9/"
+    eosDir = "/store/user/dnoonan/HGCAL_Concentrator/NewNtuples/"
     if args.particlegun:
         fileNameContent = "ntuple_hgcalNtuples_pgun_pid%i_pt%i_eta15-30_%iPU"%(args.pid, args.pt, args.pu)
-        outputFileName = "particleGun_pid%i_pt%i_eta15-30_%iPU.root"%(args.pid, args.pt, args.pu)
+        outputFileName = "fastJetClustering_particleGun_pid%i_pt%i_eta15-30_%iPU.root"%(args.pid, args.pt, args.pu)
     if args.vbf:
         fileNameContent = "ntuple_hgcalNtuples_vbf_hmm_%iPU"%(args.pu)
-        outputFileName = "VBF_%iPU.root"%(args.pu)
+        outputFileName = "fastJetClustering_VBF_%iPU.root"%(args.pu)
+    if args.minbias:
+        fileNameContent = "ntuple_hgcalNtuples_minbias_%iPU"%(args.pu)
+        outputFileName = "fastJetClustering_minBias_%iPU.root"%(args.pu)
 
 
 if args.tcCut>-1:
-    outputFileName = outputFileName.replace(".root","_tcMipPt_gt_%i.root"%int(args.tcCut))
+    tcCutStr = "%.2f"%args.tcCut
+    tcCutStr = tcCutStr.replace('.','p')
+    outputFileName = outputFileName.replace(".root","_tcMipPt_gt_%s.root"%tcCutStr)
 
 if args.simEnergyCut>-1:
     outputFileName = outputFileName.replace(".root","_simEnergy_gt_%i.root"%int(args.simEnergy))
@@ -126,7 +132,7 @@ for fName in dirContentsList:
 
 if "/" in args.job:
     if not args.job=='1/1': 
-        print "Running job",args.job
+        print ("Running job",args.job)
 
         jobN = int(args.job.split('/')[0])
         nJobs = int(args.job.split('/')[1])
@@ -155,11 +161,11 @@ for fName in fileList:
     if not args.N==-1 and (totalN >= args.N):
         break
 
-    print "File %s"%fName    
+    print ("File %s"%fName    )
     try:
         _tree = uproot.open(fName,xrootdsource=dict(chunkbytes=1024**3, limitbytes=1024**3))["hgcalTriggerNtuplizer/HGCalTriggerNtuple"]
     except:
-        print "---Unable to open file, skipping"
+        print ("---Unable to open file, skipping")
         continue
     if args.N==-1:
         N = _tree.numentries
@@ -183,7 +189,7 @@ for fName in fileList:
 
     
     if args.superTC:
-        from mapSuperTC import superTCMap2x2, superTCMap4x4
+        from mapSuperTC import superTCMap2x2, superTCMap2x4, superTCMap4x4
         from superTriggerCellGrouping import superTCMerging
         if args.superTC=='2x2':
             superTCMap = superTCMap2x2
@@ -207,9 +213,9 @@ for fName in fileList:
     del _tree
     gc.collect()
 
-    print "Loaded Tree"
+    print ("Loaded Tree")
     if args.time:
-        print "Loaded tree ", time.clock()-start
+        print ("Loaded tree ", time.clock()-start)
 
 
 
@@ -217,8 +223,8 @@ for fName in fileList:
     for i_event in range(N):
         if args.time: 
             start = time.clock()
-            print '-'*20
-            print "     %i"%i_event   
+            print ('-'*20)
+            print ("     %i"%i_event )
 
         genDF = fulldfGen.loc[i_event]
         genDF.gen_daughters = genDF.gen_daughters[0]
@@ -255,7 +261,7 @@ for fName in fileList:
 
             
         if args.time:
-            print "    Got Gen in", time.clock()-start
+            print ("    Got Gen in", time.clock()-start)
 
 
         genJetDF['matched']=False
@@ -281,7 +287,7 @@ for fName in fileList:
 
 
         output.nGen[0] = len(genDF)
-        print genDF
+
         for i in range(output.nGen[0]):
             output.genPt[i] = genDF.gen_pt.values[i]
             output.genEta[i] = genDF.gen_eta.values[i]
@@ -315,14 +321,14 @@ for fName in fileList:
 
 
         if args.verbose:
-            print 'Gen Particles'
-            print genDF
-            print '------'
+            print ('Gen Particles')
+            print (genDF)
+            print ('------')
 
         if args.verbose:
-            print 'Gen Jets'
-            print genJetDF
-            print '------'
+            print ('Gen Jets')
+            print (genJetDF)
+            print ('------')
 
         totalGen += len(genDF)
         totalGenJet += len(genJetDF)
@@ -338,22 +344,22 @@ for fName in fileList:
         tcVectors = np.array(tc[["pT","eta","phi","mass"]].to_records(index=False).astype([(u'pT', '<f8'), (u'eta', '<f8'), (u'phi', '<f8'), (u'mass', '<f8')]) ) 
 
         if args.time:
-            print "    Loaded in", time.clock()-start
+            print ("    Loaded in", time.clock()-start)
         clusterVals = cluster(tcVectors,R=0.4,algo="antikt")
         _jets = clusterVals.inclusive_jets(ptmin=args.minpt)
         if args.time:
-            print "    Clustered jets in", time.clock()-start
-            print "      --- len =",len(tcVectors), (time.clock()-start)/len(tcVectors)
+            print ("    Clustered jets in", time.clock()-start)
+            print ("      --- len =",len(tcVectors), (time.clock()-start)/len(tcVectors))
         del tcVectors
         del clusterVals
         gc.collect()
 
 
         if args.verbose:
-            print 'Reco FastJets'
+            print ('Reco FastJets')
             for jet in _jets:
-                print '   ', jet
-            print '------'
+                print ('   ', jet)
+            print ('------')
 
         isGenJetMatched=[]
         isGenPartMatched=[]
@@ -365,17 +371,15 @@ for fName in fileList:
             output.jetMinGenDR[j] = 99
             output.jetMinGenJetDR[j] = 99
 
-        #print genjetVector
         if args.verbose:
-            print 'Jet/GenJet Matching'
+            print ('Jet/GenJet Matching')
 
 #        for i in range(len(genjetVector)):
         for i in range(len(genJetDF)): 
             foundMatch = False
 
             if args.verbose:
-                print genJetDF.iloc[i]
-                # print genjetVector[i][:4]
+                print (genJetDF.iloc[i])
             for j,jet in enumerate(_jets):
                  dR_jet_genjet=((jet.eta-genJetDF.iloc[i].gen_eta)**2+(jet.phi-genJetDF.iloc[i].gen_phi)**2)**0.5
                  # dR_jet_genjet=((jet.eta-genjetVector[i,1])**2+(jet.phi-genjetVector[i,2])**2)**0.5
@@ -384,35 +388,34 @@ for fName in fileList:
                      output.jetMinGenJetDR[j] = dR_jet_genjet
 
                  if args.verbose:
-                     print "  --- %i %i %.5f\t%+.4f\t%+.4f\t%.5f"%(i, j, jet.pt, jet.eta, jet.phi, dR_jet_genjet)
+                     print ("  --- %i %i %.5f\t%+.4f\t%+.4f\t%.5f"%(i, j, jet.pt, jet.eta, jet.phi, dR_jet_genjet))
 
                  if dR_jet_genjet<0.1:
                      output.jetGenJetMatch[j] = i
                      foundMatch = True
                      if args.verbose:
-                         print 'Match'
+                         print ('Match')
                      break   
 
             isGenJetMatched.append(foundMatch)
             if args.verbose:
                 if not foundMatch:
-                    print "No Match Found"
+                    print ("No Match Found")
 
         isGenMatched = []
          
 
 #        genVector = genDF.values
         if args.verbose:
-            print 'Gen Particles'
+            print ('Gen Particles')
 
         if args.verbose:
-            print 'Jet/GenPart Matching'
+            print ('Jet/GenPart Matching')
         for i in range(len(genDF)):
         # for i in range(len(genVector)):
             foundMatch = False
             if args.verbose:
-                print genDF.iloc[i]
-                # print genVector[i][:4]
+                print (genDF.iloc[i])
 
             for j,jet in enumerate(_jets):
                  dR_jet_gen=((jet.eta-genDF.iloc[i].gen_eta)**2+(abs(abs(jet.phi-genDF.iloc[i].gen_phi)-np.pi)-np.pi)**2)**0.5
@@ -421,7 +424,7 @@ for fName in fileList:
                      output.jetMinGenDR[j] = dR_jet_gen
 
                  if args.verbose:
-                     print "  --- %i %i %.5f\t%+.4f\t%+.4f\t%.5f"%(i, j, jet.pt, jet.eta, jet.phi, dR_jet_gen)
+                     print ("  --- %i %i %.5f\t%+.4f\t%+.4f\t%.5f"%(i, j, jet.pt, jet.eta, jet.phi, dR_jet_gen))
 
                  if dR_jet_gen<0.1:
                      output.jetGenMatch[j] = i
@@ -431,12 +434,12 @@ for fName in fileList:
             isGenMatched.append(foundMatch)
             if args.verbose:
                 if not foundMatch:
-                    print "No Match Found"
+                    print ("No Match Found")
 
 
 
         if args.time:
-            print "    GenMatch in", time.clock()-start
+            print ("    GenMatch in", time.clock()-start)
 
 
         if args.draw:
@@ -489,7 +492,7 @@ for fName in fileList:
         output.tree.Fill()
 
         if args.time:
-            print "    process UnMatched in", time.clock()-start
+            print ("    process UnMatched in", time.clock()-start)
 
 
         del tc
