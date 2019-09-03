@@ -27,8 +27,8 @@ parser.add_argument('--simEnergyCut', default=-1., type=float,help='simEnergy cu
 parser.add_argument('--draw',action='store_true',help='Draw jet clusters')
 parser.add_argument('--V8','--v8',action='store_true',help='Use V8 geometry')
 
-parser.add_argument('--superTC',choices=['2x2','4x4'],default=None,help='Use super trigger cells, specify option of 2x2 or 4x4')
-parser.add_argument('--superTCCenter',action='store_true',help='Use super trigger cells with location at center rather than max cell')
+parser.add_argument('--superTC',choices=['CTC8','STC16'],default=None,help='Use super trigger cells, specify option of CTC8 or STC16 for LDM')
+#parser.add_argument('--superTCCenter',action='store_true',help='Use super trigger cells with location at center rather than max cell')
 
 args = parser.parse_args()
 
@@ -112,10 +112,10 @@ if args.V8:
     outputFileName = outputFileName.replace(".root","_geomV8.root")
 
 if args.superTC:
-    outputFileName = outputFileName.replace(".root","_superTC%s.root"%args.superTC)
+    outputFileName = outputFileName.replace(".root","_superTC_%s.root"%args.superTC)
 
-    if args.superTCCenter:
-        outputFileName = outputFileName.replace(".root","Centered.root")
+#    if args.superTCCenter:
+#        outputFileName = outputFileName.replace(".root","Centered.root")
 
 if not args.name=="":
     outputFileName = outputFileName.replace(".root","_%s.root"%args.name)
@@ -125,7 +125,7 @@ fileList = []
 # get list of files
 cmd = "xrdfs root://cmseos.fnal.gov ls %s"%eosDir
 dirContents,stderr = Popen(cmd,shell=True,stdout=PIPE,stderr=PIPE).communicate()
-dirContentsList = dirContents.split("\n")
+dirContentsList = dirContents.decode('ascii').split("\n")
 for fName in dirContentsList:
     if fileNameContent in fName:
         fileList.append("root://cmseos.fnal.gov/%s"%(fName))
@@ -189,18 +189,25 @@ for fName in fileList:
 
     
     if args.superTC:
-        from mapSuperTC import superTCMap2x2, superTCMap2x4, superTCMap4x4
-        from superTriggerCellGrouping import superTCMerging
-        if args.superTC=='2x2':
-            superTCMap = superTCMap2x2
-        if args.superTC=='4x4':
-            superTCMap = superTCMap4x4
+        # from mapSuperTC import superTCMap2x2, superTCMap2x4, superTCMap4x4
+        # from superTriggerCellGrouping import superTCMerging
+        
+        # if args.superTC=='2x2':
+        #     superTCMap = superTCMap2x2
+        # if args.superTC=='4x4':
+        #     superTCMap = superTCMap4x4
         geomVersion = "V9"
-        if args.V8:
-            geomVersion = "V8"
-        useMaxPtLocation = not args.superTCCenter
+        # if args.V8:
+        #     geomVersion = "V8"
+        # useMaxPtLocation = not args.superTCCenter
+        from superTriggerCellGrouping_CTC8_STC16 import superTCMerging_CTC8_LDM, superTCMerging_STC16_LDM
+        if args.superTC=='CTC8':
+            superTCMerging = superTCMerging_CTC8_LDM
+        if args.superTC=='STC16':
+            superTCMerging = superTCMerging_STC16_LDM
 
-        fulldf = superTCMerging(fulldf, mergedBranches=['tc_pt','tc_energy','tc_eta','tc_phi','tc_mipPt','tc_simenergy'], useMaxPtLocation=useMaxPtLocation, geomVersion=geomVersion, superTCMap = superTCMap)
+
+        fulldf = superTCMerging(fulldf, mergedBranches=['tc_pt','tc_energy','tc_eta','tc_phi','tc_mipPt','tc_simenergy'])
 
 
     # fulldf = fulldf[(fulldf.tc_mipPt > args.tcCut) & (fulldf.tc_simenergy > args.simEnergyCut)]
@@ -341,15 +348,19 @@ for fName in fileList:
 
         #go dataframe to np array, formatted for input into fastjet    
         # tcVectors = np.array(tc.to_records(index=False).astype([(u'pT', '<f8'), (u'eta', '<f8'), (u'phi', '<f8'), (u'energy', '<f8')]) ) 
+
         tcVectors = np.array(tc[["pT","eta","phi","mass"]].to_records(index=False).astype([(u'pT', '<f8'), (u'eta', '<f8'), (u'phi', '<f8'), (u'mass', '<f8')]) ) 
 
         if args.time:
             print ("    Loaded in", time.clock()-start)
+
         clusterVals = cluster(tcVectors,R=0.4,algo="antikt")
         _jets = clusterVals.inclusive_jets(ptmin=args.minpt)
+
         if args.time:
             print ("    Clustered jets in", time.clock()-start)
             print ("      --- len =",len(tcVectors), (time.clock()-start)/len(tcVectors))
+
         del tcVectors
         del clusterVals
         gc.collect()
