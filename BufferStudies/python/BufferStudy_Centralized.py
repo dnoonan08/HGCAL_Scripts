@@ -6,6 +6,8 @@ import pandas as pd
 import awkward
 import time
 import pickle
+import os
+from subprocess import Popen, PIPE
 
 
 import argparse
@@ -18,6 +20,9 @@ parser.add_argument('--fill', default=-1, type=int)
 parser.add_argument('--fillAgain', default=-1, type=int)
 parser.add_argument('--fillFull', default=False, action='store_true')
 parser.add_argument('--add', default=0, type=int)
+parser.add_argument('--wordSize', '--word',default=32, type=int)
+parser.add_argument('--newFormat', default = False, action='store_true')
+parser.add_argument('--newFormatNoHeader', default = False, action='store_true')
 args = parser.parse_args()
 
 
@@ -28,7 +33,7 @@ fill = args.fill
 fillAgain = args.fillAgain
 addTC = args.add
 job=args.job
-
+wordSize = args.wordSize
 
 fillMod = fill>0
 fillAgainMod = fillAgain>0
@@ -69,8 +74,8 @@ for i in range(nMB):
 
 from numba import vectorize, int64, float64
 
-@vectorize([int64(int64),float64(float64)])
-def getBits(nTC):
+@vectorize([int64(int64,int64),float64(float64,int64)])
+def getBitsOrig(nTC,wordSize):
     header   = 4 + 5 + 1 ### header(4) + bxID(5) + addressMode(1)                                                                                           
     towerSum = 24
     if nTC < 18:
@@ -78,7 +83,61 @@ def getBits(nTC):
     else:
         total = header + towerSum + 144 + 7*nTC
 
+    # round up to word size
+    total = int(np.ceil(total/wordSize)*wordSize)
+
     return total
+
+#address mode (2 bits)
+#  0 - empty, no TC information
+#  1 - only one TC (send 6-bit address + 7-bit energy)
+#  2 - less than or equal 7 TC, send by address mode (6-bit address + 7-bit energy per TC), include 3 bit for number of TC's
+#  3 - full TC, send 48-bit bitmap + 7 
+
+@vectorize([int64(int64,int64),float64(float64,int64)])
+def getBitsNew(nTC,wordSize):
+    header   = 4 + 5 + 2 ### header(4) + bxID(5) + addressMode(2)                                                                                           
+    towerSum = 24
+    if nTC == 0:
+        total = header + towerSum
+    elif nTC == 1:
+        total = header + towerSum + 13
+    elif nTC < 7:
+        total = header + towerSum + 5 + 13*nTC
+    else:
+        total = header + towerSum + 144 + 7*nTC
+    total = int(np.ceil(total/wordSize)*wordSize)
+
+    return total
+
+#address mode (2 bits)
+#  0 - empty, no TC information
+#  1 - only one TC (send 6-bit address + 7-bit energy)
+#  2 - less than or equal 7 TC, send by address mode (6-bit address + 7-bit energy per TC), include 3 bit for number of TC's
+#  3 - full TC, send 48-bit bitmap + 7 
+
+@vectorize([int64(int64,int64),float64(float64,int64)])
+def getBitsNoHeader(nTC,wordSize):
+    header   = 5 + 2 ### header(4) + bxID(5) + addressMode(2)                                                                                           
+    towerSum = 24
+    if nTC == 0:
+        total = header + towerSum
+    elif nTC == 1:
+        total = header + towerSum + 13
+    elif nTC < 7:
+        total = header + towerSum + 5 + 13*nTC
+    else:
+        total = header + towerSum + 144 + 7*nTC
+    total = int(np.ceil(total/wordSize)*wordSize)
+
+    return total
+
+getBits = getBitsOrig
+if args.newFormat:
+    getBits = getBitsNew
+if args.newFormatNoHeader:
+    getBits = getBitsNoHeader
+
 
 
 @vectorize([int64(int64,int64),int64(int64,float64)])
@@ -171,7 +230,7 @@ for BX in range(1,N+1):
             else:
                 _nTC = nTCDropOne[:,iBX] + 48
 
-    _nBits = getBits(_nTC)
+    _nBits = getBits(_nTC,wordSize)
     tcCount.append(_nTC.copy())
     bitCount.append(_nBits.copy())
     
@@ -232,7 +291,7 @@ tcCount = np.array(tcCount)
 bitCount = np.array(bitCount)
 
 meanOcc = np.array([nTC[i].mean() for i in range(nMB)])
-meanBits = getBits(meanOcc)
+meanBits = getBits(meanOcc,-1)
 
 
 BufferOutput = "Output_Buffer_MotherBoard_thr%s_layer%i_job%i.pkl"%(("%.1f"%threshold).replace('.','p'),layer,job)
@@ -242,6 +301,12 @@ if fillMod:
     BufferOutput = BufferOutput.replace('_job','_fillEvery%i_job'%fill)
     if fillAgainMod:
         BufferOutput = BufferOutput.replace('_job','_againEvery%i_job'%fillAgain)
+if wordSize>0:
+    BufferOutput = BufferOutput.replace('_job','_words%i_job'%wordSize)
+if args.newFormat:
+    BufferOutput = BufferOutput.replace('_job','_newDataFormat_job')
+if args.newFormatNoHeader:
+    BufferOutput = BufferOutput.replace('_job','_newDataFormatNoHeader_job')
 
 with open(BufferOutput,'wb') as f:
     pickle.dump(tcCount,f)
@@ -252,12 +317,6 @@ with open(BufferOutput,'wb') as f:
     pickle.dump(motherboards,f)
     pickle.dump(meanOcc,f)
     pickle.dump(meanBits,f)
-
-
-OverflowCount
-
-
-ResetCount
 
 
 
