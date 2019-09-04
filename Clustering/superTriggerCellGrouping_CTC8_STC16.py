@@ -12,7 +12,10 @@ def superTCMerging_CTC8_LDM(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi','
     fulldf.reset_index(inplace=True)
     fulldf.set_index(['tc_subdet','tc_zside','tc_layer','tc_wafer'],inplace=True)
 
+
     fulldf['HDM'] = geomDF.HDM
+
+    fulldf.loc[5,'HDM']=True
 
     fulldf.reset_index(inplace=True)
     fulldf.set_index(['entry','subentry'])
@@ -32,7 +35,8 @@ def superTCMerging_CTC8_LDM(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi','
     fullDFmax.set_index(['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'],inplace=True)
 
     superTC = superTCGroup.sum()
-    superTC['HDM'] = superTC.HDM>0
+    superTC['HDM'] = superTCGroup.HDM.any()
+
 
     #use max energy TC for high density modules
     if 'tc_cell' in mergedBranches: 
@@ -92,7 +96,7 @@ def superTCMerging_CTC8_LDM(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi','
     if 'tc_z' in mergedBranches:
         superTCFinal['tc_z'] = superTCmax['tc_z']
 
-    superTC = superTCFinal[mergedBranches]
+    superTC = superTCFinal[mergedBranches+['HDM']]
     superTC.reset_index(inplace=True)
     superTC.set_index(['entry'],inplace=True)
 
@@ -127,7 +131,7 @@ def superTCMerging_STC16_LDM(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi',
     fullDFmax.set_index(['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'],inplace=True)
 
     superTC = superTCGroup.sum()
-    superTC['HDM'] = superTC.HDM==0
+    superTC['HDM'] = superTCGroup.HDM.any()
 
     #use max energy TC for high density modules
     if 'tc_cell' in mergedBranches: 
@@ -144,7 +148,7 @@ def superTCMerging_STC16_LDM(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi',
         superTC['tc_z'] = fullDFmax['tc_z']
 
 
-    superTC = superTC[mergedBranches]
+    superTC = superTC[mergedBranches+['HDM']]
     superTC.reset_index(inplace=True)
     superTC.set_index(['entry'],inplace=True)
     return superTC
