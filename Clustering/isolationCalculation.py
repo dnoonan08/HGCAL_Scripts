@@ -22,12 +22,15 @@ parser.add_argument('--minpt', default=20., type=float)
 
 parser.add_argument('--genjet',action='store_true',help='Use genJet instead of gen partons')
 parser.add_argument('--tcCut', default=-1., type=float,help='mipPT cut to apply to trigger cells')
+parser.add_argument('--stcCut', default=-1., type=float,help='mipPT cut to apply to super trigger cells')
 parser.add_argument('--simEnergyCut', default=-1., type=float,help='simEnergy cut to apply to trigger cells')
 
 parser.add_argument('--draw',action='store_true',help='Draw jet clusters')
 parser.add_argument('--V8','--v8',action='store_true',help='Use V8 geometry')
 
-parser.add_argument('--superTC',choices=['CTC8','STC16'],default=None,help='Use super trigger cells, specify option of CTC8 or STC16 for LDM')
+parser.add_argument('--bestChoice','--BestChoice', '--bc', '--BC',action='store_true',help='Use best choice algorithm')
+
+parser.add_argument('--superTC',choices=['CTC8','STC16','CTC48'],default=None,help='Use super trigger cells, specify option of CTC8 or STC16 for LDM')
 #parser.add_argument('--superTCCenter',action='store_true',help='Use super trigger cells with location at center rather than max cell')
 
 args = parser.parse_args()
@@ -45,10 +48,10 @@ import sys
 import uproot
 import numpy as np
 #import pandas as pd
-from root_numpy import fill_hist
-
 print ("Using uproot version:",uproot.__version__)
 print ("uproot path location:",uproot.__file__)
+
+from root_numpy import fill_hist
 
 import gc
 
@@ -111,8 +114,16 @@ if args.simEnergyCut>-1:
 if args.V8:
     outputFileName = outputFileName.replace(".root","_geomV8.root")
 
+if args.bestChoice:
+    outputFileName = outputFileName.replace(".root","_BestChoice.root")
+
 if args.superTC:
     outputFileName = outputFileName.replace(".root","_superTC_%s.root"%args.superTC)
+
+    if args.stcCut:
+        stcCutStr = "%.2f"%args.stcCut
+        stcCutStr = stcCutStr.replace('.','p')
+        outputFileName = outputFileName.replace(".root","_stcMipPt_gt_%s.root"%stcCutStr)
 
 #    if args.superTCCenter:
 #        outputFileName = outputFileName.replace(".root","Centered.root")
@@ -137,9 +148,17 @@ if "/" in args.job:
         jobN = int(args.job.split('/')[0])
         nJobs = int(args.job.split('/')[1])
         totalFiles = len(fileList)
-        filesPerJob = int(round(totalFiles/nJobs+.4999))
+        
+        filesPerJob = 1.*totalFiles/nJobs
 
-        fileList = fileList[(jobN-1)*filesPerJob:jobN*filesPerJob]
+        startFileNumber = int(round((jobN-1)*filesPerJob))
+        endFileNumber = int(round(jobN*filesPerJob))
+        if jobN==nJobs:
+            endFileNumber = totalFiles
+        print ("  %i total files"%totalFiles)
+        print ("  job %i/%i will process files %i to %i"%(jobN,nJobs,startFileNumber+1, endFileNumber))
+
+        fileList = fileList[startFileNumber:endFileNumber]
         outputFileName = outputFileName.replace(".root","_%iof%i.root"%(jobN, nJobs))
 
 from makeIsoTree import *
@@ -155,6 +174,7 @@ totalN = 0
 
 totalGen = 0
 totalGenJet = 0
+
 
 for fName in fileList:
 
@@ -179,9 +199,11 @@ for fName in fileList:
             N = nRemaining
         totalN += _tree.numentries
 
+    if _tree.numentries==0:
+        continue
 
     branches = ["tc_pt","tc_energy","tc_eta","tc_mipPt","tc_simenergy","tc_phi"]
-    if args.superTC:
+    if args.superTC or args.bestChoice:
         branches = ["tc_subdet","tc_zside","tc_layer","tc_wafer","tc_cell"] + branches
 
 
@@ -200,22 +222,30 @@ for fName in fileList:
         # if args.V8:
         #     geomVersion = "V8"
         # useMaxPtLocation = not args.superTCCenter
-        from superTriggerCellGrouping_CTC8_STC16 import superTCMerging_CTC8_LDM, superTCMerging_STC16_LDM
+        from superTriggerCellGrouping_CTC8_STC16 import superTCMerging_CTC8_LDM, superTCMerging_STC16_LDM, superTCMerging_CTC48
         if args.superTC=='CTC8':
             superTCMerging = superTCMerging_CTC8_LDM
         if args.superTC=='STC16':
             superTCMerging = superTCMerging_STC16_LDM
+        if args.superTC=='CTC48':
+            superTCMerging = superTCMerging_CTC48
 
 
         fulldf = superTCMerging(fulldf, mergedBranches=['tc_pt','tc_energy','tc_eta','tc_phi','tc_mipPt','tc_simenergy'])
+        fulldf = fulldf[(fulldf.tc_mipPt > args.stcCut)] 
 
+    if args.bestChoice:
+        from getBestChoice import bestChoice_SignalAlloc
 
-    # fulldf = fulldf[(fulldf.tc_mipPt > args.tcCut) & (fulldf.tc_simenergy > args.simEnergyCut)]
+        fulldf = bestChoice_SignalAlloc(fulldf)
+
+    fulldf = fulldf[(fulldf.tc_mipPt > args.tcCut) & (fulldf.tc_simenergy > args.simEnergyCut)]
     # gc.collect()
 
     fulldfGen = _tree.pandas.df(["gen_pt","gen_eta","gen_phi","gen_status","gen_pdgid","gen_energy","gen_daughters"],entrystart=0,entrystop=N)
     # fulldfGen = _tree.pandas.df(["gen_pt","gen_eta","gen_phi","gen_status","gen_pdgid","gen_energy"],entrystart=0,entrystop=N)
     fulldfGenJet = _tree.pandas.df(["genjet_pt","genjet_eta","genjet_phi","genjet_energy"],entrystart=0,entrystop=N)
+    fulldfGenJet.columns = ['gen_pt','gen_eta','gen_phi','gen_energy']
 
     del _tree
     gc.collect()
@@ -225,23 +255,24 @@ for fName in fileList:
         print ("Loaded tree ", time.clock()-start)
 
 
-
-
     for i_event in range(N):
         if args.time: 
             start = time.clock()
             print ('-'*20)
             print ("     %i"%i_event )
 
-        genDF = fulldfGen.loc[i_event]
+        genDF = fulldfGen.loc[i_event].copy()
+
         genDF.gen_daughters = genDF.gen_daughters[0]
 
         # genDF = fulldfGen.loc[i_event,['gen_pt','gen_eta','gen_phi','gen_status','gen_pdgid','gen_energy']]
 
         if args.vbf:
-            genDFStart = genDF[(genDF.gen_status==23) & (abs(genDF.gen_pdgid)<6)]
+            genDFStart = genDF[(genDF.gen_status==23) & (abs(genDF.gen_pdgid)<6)].copy()
+        elif args.minbias:
+            genDFStart = genDF[((genDF.gen_status==1) | (genDF.gen_status==23))].copy()
         else:
-            genDFStart = genDF[((genDF.gen_status==1) | (genDF.gen_status==23)) & (abs(genDF.gen_pdgid)==args.pid) & (abs(genDF.gen_eta)>1.5) & (abs(genDF.gen_eta)<3.)]
+            genDFStart = genDF[((genDF.gen_status==1) | (genDF.gen_status==23)) & (abs(genDF.gen_pdgid)==args.pid) & (abs(genDF.gen_eta)>1.5) & (abs(genDF.gen_eta)<3.)].copy()
 
         ### look through daughters fo the parton to find last copy (last parton in decay chain with same pdgid)
         finalIdxList = []
@@ -249,7 +280,7 @@ for fName in fileList:
             daughterList = genDFStart.gen_daughters.iloc[i]
             finalIdx = i
             pdgID = genDFStart.gen_pdgid.iloc[i]
-             
+
             while pdgID==genDF.gen_pdgid.iloc[daughterList[0]]:
                 #idxList.append(daughterList[0])
                 finalIdx = daughterList[0]
@@ -260,10 +291,9 @@ for fName in fileList:
         ## select only final parton from each VBF parton, and only if in HGCAL
 
         genDF = genDF.loc[finalIdxList]
-        genDF = genDF[ (abs(genDF.gen_eta)>1.5) & (abs(genDF.gen_eta)<3.) ]
+        
+        genJetDF = fulldfGenJet.loc[i_event]
 
-        genJetDF = fulldfGenJet.loc[i_event,['genjet_pt','genjet_eta','genjet_phi','genjet_energy']]
-        genJetDF.columns = ['gen_pt','gen_eta','gen_phi','gen_energy']
         genJetDF = genJetDF[(genJetDF.gen_energy>(0.5*genDF.gen_energy.min()))]
 
             
@@ -271,7 +301,7 @@ for fName in fileList:
             print ("    Got Gen in", time.clock()-start)
 
 
-        genJetDF['matched']=False
+        genJetDF['matched']=-1
         genDF['minDR_genJet'] = 99.
         genDF['minDEn_genJet'] = 99.
         genDF['minDPt_genJet'] = 99.
@@ -283,18 +313,60 @@ for fName in fileList:
 #            genJetDF.loc[genJetDF.dPt>0.5,'dR'] = 999
         
             if genJetDF.dR.min()<0.3:
-                genJetDF.loc[genJetDF.dR.idxmin(),'matched']=True
+                genJetDF.loc[genJetDF.dR.idxmin(),'matched']=k
             ik = genDF.iloc[k].name
             genDF.loc[ik,'minDR_genJet'] = genJetDF.dR.min()
             genDF.loc[ik,'minDPt_genJet'] = genJetDF.loc[genJetDF.dR.idxmin()].dPt
             genDF.loc[ik,'minDEn_genJet'] = genJetDF.loc[genJetDF.dR.idxmin()].dEn
 
 
-        genJetDF = genJetDF[genJetDF.matched][['gen_pt','gen_eta','gen_phi','gen_energy']]
+        output.nGenJet_Full[0] = len(genJetDF[(genJetDF.matched>-1)])
+        for i in range(output.nGenJet_Full[0]):
+#            print (i)
+            output.genJetPt_Full[i] = genJetDF[(genJetDF.matched>-1)].gen_pt.values[i]
+            output.genJetEta_Full[i] = genJetDF[(genJetDF.matched>-1)].gen_eta.values[i]
+            output.genJetPhi_Full[i] = genJetDF[(genJetDF.matched>-1)].gen_phi.values[i]
+            output.genJetEn_Full[i] = genJetDF[(genJetDF.matched>-1)].gen_energy.values[i]
+            output.genJetPartonMatch_Full[i] = genJetDF[(genJetDF.matched>-1)].matched.values[i]
 
+        output.nGen_Full[0] = len(genDF)
+
+        for i in range(output.nGen_Full[0]):
+            output.genPt_Full[i] = genDF.gen_pt.values[i]
+            output.genEta_Full[i] = genDF.gen_eta.values[i]
+            output.genPhi_Full[i] = genDF.gen_phi.values[i]
+            output.genEn_Full[i] = genDF.gen_energy.values[i]
+            output.genPID_Full[i] = genDF.gen_pdgid.values[i]
+            output.genMinDR_Full[i] = genDF.minDR_genJet.values[i]
+            output.genMinDPt_Full[i] = genDF.minDPt_genJet.values[i]
+            output.genMinDEn_Full[i] = genDF.minDEn_genJet.values[i]
+
+
+        genDF = genDF[ (abs(genDF.gen_eta)>1.5) & (abs(genDF.gen_eta)<3.) ]
+
+
+        genJetDF['matched']=-1
+        genDF['minDR_genJet'] = 99.
+        genDF['minDEn_genJet'] = 99.
+        genDF['minDPt_genJet'] = 99.
+
+        for k in range(len(genDF)):
+            genJetDF['dR'] = (( abs(abs(genJetDF.gen_phi-genDF.iloc[k].gen_phi)-np.pi)-np.pi )**2+(genJetDF.gen_eta-genDF.iloc[k].gen_eta)**2)**0.5
+            genJetDF['dEn'] = abs(genJetDF.gen_energy-genDF.iloc[k].gen_energy)/genDF.iloc[k].gen_energy
+            genJetDF['dPt'] = abs(genJetDF.gen_pt-genDF.iloc[k].gen_pt)/genDF.iloc[k].gen_pt
+#            genJetDF.loc[genJetDF.dPt>0.5,'dR'] = 999
+        
+            if genJetDF.dR.min()<0.3:
+                genJetDF.loc[genJetDF.dR.idxmin(),'matched']=k
+            ik = genDF.iloc[k].name
+            genDF.loc[ik,'minDR_genJet'] = genJetDF.dR.min()
+            genDF.loc[ik,'minDPt_genJet'] = genJetDF.loc[genJetDF.dR.idxmin()].dPt
+            genDF.loc[ik,'minDEn_genJet'] = genJetDF.loc[genJetDF.dR.idxmin()].dEn
+
+
+        genJetDF = genJetDF[(genJetDF.matched>-1)][['gen_pt','gen_eta','gen_phi','gen_energy']]
 
         output.nGen[0] = len(genDF)
-
         for i in range(output.nGen[0]):
             output.genPt[i] = genDF.gen_pt.values[i]
             output.genEta[i] = genDF.gen_eta.values[i]
@@ -304,15 +376,6 @@ for fName in fileList:
             output.genMinDR[i] = genDF.minDR_genJet.values[i]
             output.genMinDPt[i] = genDF.minDPt_genJet.values[i]
             output.genMinDEn[i] = genDF.minDEn_genJet.values[i]
-
-
-        output.nGen_Initial[0] = len(genDFStart)
-        for i in range(output.nGen_Initial[0]):
-            output.genPt_Initial[i] = genDFStart.gen_pt.values[i]
-            output.genEta_Initial[i] = genDFStart.gen_eta.values[i]
-            output.genPhi_Initial[i] = genDFStart.gen_phi.values[i]
-            output.genEn_Initial[i] = genDFStart.gen_energy.values[i]
-            output.genPID_Initial[i] = genDFStart.gen_pdgid.values[i]
 
 
 
@@ -340,30 +403,35 @@ for fName in fileList:
         totalGen += len(genDF)
         totalGenJet += len(genJetDF)
 
-
         # load into dictionary for creating pandas df
-        tc = fulldf.loc[i_event,['tc_pt','tc_eta','tc_phi','tc_energy']]
-        tc.columns=["pT","eta","phi","energy"]
-        tc = tc.assign(mass=0)
+        try:
+            tc = fulldf.loc[i_event,['tc_pt','tc_eta','tc_phi','tc_energy']]
 
-        #go dataframe to np array, formatted for input into fastjet    
-        # tcVectors = np.array(tc.to_records(index=False).astype([(u'pT', '<f8'), (u'eta', '<f8'), (u'phi', '<f8'), (u'energy', '<f8')]) ) 
+            tc.columns=["pT","eta","phi","energy"]
+            tc = tc.assign(mass=0)
 
-        tcVectors = np.array(tc[["pT","eta","phi","mass"]].to_records(index=False).astype([(u'pT', '<f8'), (u'eta', '<f8'), (u'phi', '<f8'), (u'mass', '<f8')]) ) 
+            #go dataframe to np array, formatted for input into fastjet    
+            # tcVectors = np.array(tc.to_records(index=False).astype([(u'pT', '<f8'), (u'eta', '<f8'), (u'phi', '<f8'), (u'energy', '<f8')]) ) 
 
-        if args.time:
-            print ("    Loaded in", time.clock()-start)
+            tcVectors = np.array(tc[["pT","eta","phi","mass"]].to_records(index=False).astype([(u'pT', '<f8'), (u'eta', '<f8'), (u'phi', '<f8'), (u'mass', '<f8')]) ) 
 
-        clusterVals = cluster(tcVectors,R=0.4,algo="antikt")
-        _jets = clusterVals.inclusive_jets(ptmin=args.minpt)
+            if args.time:
+                print ("    Loaded in", time.clock()-start)
 
-        if args.time:
-            print ("    Clustered jets in", time.clock()-start)
-            print ("      --- len =",len(tcVectors), (time.clock()-start)/len(tcVectors))
+            clusterVals = cluster(tcVectors,R=0.4,algo="antikt")
+            _jets = clusterVals.inclusive_jets(ptmin=args.minpt)
+            if args.time:
+                print ("    Clustered jets in", time.clock()-start)
+                print ("      --- len =",len(tcVectors), (time.clock()-start)/len(tcVectors))
 
-        del tcVectors
-        del clusterVals
-        gc.collect()
+            del tcVectors
+            del clusterVals
+            gc.collect()
+
+        except:
+            _jets = []
+
+
 
 
         if args.verbose:
@@ -505,11 +573,12 @@ for fName in fileList:
         if args.time:
             print ("    process UnMatched in", time.clock()-start)
 
-
-        del tc
-        # del genVector
-#        del genjetVector
-
+        try:
+            del tc
+            # del genVector
+            #        del genjetVector
+        except:
+            print("No TC's, event", i_event)
         gc.collect()
 
         

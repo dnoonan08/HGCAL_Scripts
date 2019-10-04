@@ -1,9 +1,10 @@
 import numpy as np
 import pandas as pd
-from mapSuperTC import superTCMap2x2, superTCMapFrom2x2To2x4
-from scintillatorMapping import scintillatorMapToHGROC
+from mapSuperTC import superTCMap2x2, superTCMapFrom2x2To2x4, superTCMap48
+from scintillatorMapping import scintillatorMapToHGROC, scintillatorMapTo48
 from getGeometry import getTCGeometry, getSuperTCGeometry, getSuperTCEqualShareGeometry
 
+import gc
 
 def superTCMerging_CTC8_LDM(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi','tc_energy','tc_simenergy','tc_x','tc_y','tc_cell'],geomVersion='V9'):
 
@@ -14,6 +15,9 @@ def superTCMerging_CTC8_LDM(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi','
 
 
     fulldf['HDM'] = geomDF.HDM
+    del geomDF
+    gc.collect()
+    print('got HDM')
 
     fulldf.loc[5,'HDM']=True
 
@@ -26,8 +30,6 @@ def superTCMerging_CTC8_LDM(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi','
     columns = ['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC','HDM']+mergedBranches
     superTCGroup = fulldf.reset_index().loc[:,columns].groupby(['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'])
 
-#    geomDF = getSuperTCEqualShareGeometry(geomVersion=geomVersion, superTCMap=superTCMap2x2)
-
     val = 'tc_energy'
     
     fullDFmax = fulldf.reset_index().sort_values(val, ascending=False).drop_duplicates(['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'])
@@ -36,6 +38,10 @@ def superTCMerging_CTC8_LDM(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi','
 
     superTC = superTCGroup.sum()
     superTC['HDM'] = superTCGroup.HDM.any()
+
+    del superTCGroup
+    gc.collect()
+    print('got superTC')
 
 
     #use max energy TC for high density modules
@@ -52,6 +58,10 @@ def superTCMerging_CTC8_LDM(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi','
     if 'tc_z' in mergedBranches:
         superTC.loc[fullDFmax.HDM,'tc_z'] = fullDFmax.loc[fullDFmax.HDM,'tc_z']
 
+    del fullDFmax
+    gc.collect()
+    print('got fullDFmax')
+
 
     geomDF_STC = getSuperTCGeometry(geomVersion=geomVersion, superTCMapHDM=superTCMap2x2, superTCMapLDM=superTCMap2x2,superTCMapScint = scintillatorMapToHGROC)
 
@@ -67,6 +77,11 @@ def superTCMerging_CTC8_LDM(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi','
         superTC.loc[np.invert(superTC.HDM),"tc_y"] = geomDF_STC.loc[np.invert(geomDF_STC.HDM),"tc_y"]
     if 'tc_z' in mergedBranches:
         superTC.loc[np.invert(superTC.HDM),"tc_z"] = geomDF_STC.loc[np.invert(geomDF_STC.HDM),"tc_z"]
+    
+    del geomDF_STC
+    gc.collect()
+    print('got geomDF_STC')
+
 
     superTC.reset_index(inplace=True)
     superTC.set_index(['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'],inplace=True)
@@ -77,11 +92,11 @@ def superTCMerging_CTC8_LDM(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi','
                                      superTC.tc_superTC.map(superTCMapFrom2x2To2x4)
                                  )
 
-    superTCGroupFinal = superTC.reset_index().groupby(['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'])
+    superTCFinal = superTC.reset_index().groupby(['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC']).sum()
+
     superTCmax = superTC.reset_index().sort_values(val, ascending=False).drop_duplicates(['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'])
     superTCmax.set_index(['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'],inplace=True)
 
-    superTCFinal = superTCGroupFinal.sum()
 
     if 'tc_cell' in mergedBranches:
         superTCFinal['tc_cell'] = superTCmax['tc_cell']
@@ -95,6 +110,11 @@ def superTCMerging_CTC8_LDM(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi','
         superTCFinal['tc_y'] = superTCmax['tc_y']
     if 'tc_z' in mergedBranches:
         superTCFinal['tc_z'] = superTCmax['tc_z']
+
+    del superTCmax
+    gc.collect()
+    print('got superTCmax')
+
 
     superTC = superTCFinal[mergedBranches+['HDM']]
     superTC.reset_index(inplace=True)
@@ -133,6 +153,8 @@ def superTCMerging_STC16_LDM(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi',
     superTC = superTCGroup.sum()
     superTC['HDM'] = superTCGroup.HDM.any()
 
+    del superTCGroup
+
     #use max energy TC for high density modules
     if 'tc_cell' in mergedBranches: 
         superTC['tc_cell'] = fullDFmax['tc_cell']
@@ -157,6 +179,60 @@ def superTCMerging_STC16_LDM(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi',
 
 
 
+
+def superTCMerging_CTC48(fulldf,mergedBranches = ['tc_pt','tc_eta','tc_phi','tc_energy','tc_simenergy','tc_x','tc_y','tc_cell'],geomVersion='V9'):
+
+    geomDF = getTCGeometry(geomVersion=geomVersion).reset_index().drop_duplicates(['tc_subdet','tc_zside','tc_layer','tc_wafer']).set_index(['tc_subdet','tc_zside','tc_layer','tc_wafer'])[['HDM']]
+
+    fulldf.reset_index(inplace=True)
+    fulldf.set_index(['tc_subdet','tc_zside','tc_layer','tc_wafer'],inplace=True)
+
+    fulldf['HDM'] = geomDF.HDM
+    fulldf.loc[5,'HDM']=True
+
+    fulldf.reset_index(inplace=True)
+    fulldf.set_index(['entry','subentry'])
+
+    fulldf["tc_superTC"] = np.where(fulldf.tc_subdet==5,fulldf['tc_cell'].map(scintillatorMapTo48), 0)
+
+    columns = ['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC','HDM']+mergedBranches
+    superTCGroup = fulldf.reset_index().loc[:,columns].groupby(['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'])
+
+#    geomDF = getSuperTCEqualShareGeometry(geomVersion=geomVersion, superTCMap=superTCMap)
+
+
+    geomDF_STC = getSuperTCGeometry(geomVersion=geomVersion, superTCMapHDM=superTCMap48, superTCMapLDM=superTCMap48,superTCMapScint = scintillatorMapTo48)
+
+    superTC = superTCGroup.sum()
+    superTC['HDM'] = superTCGroup.HDM.any()
+
+    del superTCGroup
+    gc.collect()
+
+    superTC.reset_index(inplace=True)
+    superTC.set_index(['tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'],inplace=True)
+    if 'tc_eta' in mergedBranches:
+        superTC.loc[np.invert(superTC.HDM),"tc_eta"] = geomDF_STC.loc[np.invert(geomDF_STC.HDM),"tc_eta"]
+    if 'tc_phi' in mergedBranches:
+        superTC.loc[np.invert(superTC.HDM),"tc_phi"] = geomDF_STC.loc[np.invert(geomDF_STC.HDM),"tc_phi"]
+    if 'tc_x' in mergedBranches:
+        superTC.loc[np.invert(superTC.HDM),"tc_x"] = geomDF_STC.loc[np.invert(geomDF_STC.HDM),"tc_x"]
+    if 'tc_y' in mergedBranches:
+        superTC.loc[np.invert(superTC.HDM),"tc_y"] = geomDF_STC.loc[np.invert(geomDF_STC.HDM),"tc_y"]
+    if 'tc_z' in mergedBranches:
+        superTC.loc[np.invert(superTC.HDM),"tc_z"] = geomDF_STC.loc[np.invert(geomDF_STC.HDM),"tc_z"]
+    
+    del geomDF_STC
+    gc.collect()
+    print('got geomDF_STC')
+
+    superTC.reset_index(inplace=True)
+    superTC.set_index(['entry','tc_subdet','tc_zside','tc_layer','tc_wafer','tc_superTC'],inplace=True)
+
+    superTC = superTC[mergedBranches+['HDM']]
+    superTC.reset_index(inplace=True)
+    superTC.set_index(['entry'],inplace=True)
+    return superTC
 
 
 
