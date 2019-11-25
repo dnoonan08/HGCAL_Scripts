@@ -1,6 +1,7 @@
 *root
 *pkl
 *csv
+!VerificationData/TC_ELINK_MAP.csv
 *pyc
 *pdf
 *~
